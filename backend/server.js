@@ -22,7 +22,8 @@ const reminderRoutes = require('./routes/reminders');
 const webhookRoutes = require('./routes/webhook');
 const dashboardRoutes = require('./routes/dashboard');
 const sourcesRoutes = require('./routes/sources');
-const captureRoutes = require('./routes/capture');
+const captureRoutes  = require('./routes/capture');
+const settingsRoutes = require('./routes/settings');
 
 // Ensure log directory exists
 const logDir = path.join(__dirname, 'logs');
@@ -75,6 +76,7 @@ app.use('/api/webhook',   webhookRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/sources',   sourcesRoutes);
 app.use('/api/capture',   captureRoutes);
+app.use('/api/settings',  settingsRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
