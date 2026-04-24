@@ -4,14 +4,16 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   server: {
-    port: 3000,
+    port: 6061,
+    host: '0.0.0.0',
+    allowedHosts: ['lead.wizone.ai'],
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:5007',
         changeOrigin: true,
       },
       '/socket.io': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:5007',
         ws: true,
       },
     },
