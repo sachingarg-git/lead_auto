@@ -71,6 +71,13 @@ export const sourcesApi = {
   regenerateKey: (id) => api.post(`/sources/${id}/regenerate-key`),
 };
 
+// ── Settings ──────────────────────────────────────────────────
+export const settingsApi = {
+  getAll:    ()     => api.get('/settings'),
+  save:      (data) => api.put('/settings', data),
+  testEmail: (to)   => api.post('/settings/test-email', { to }),
+};
+
 // ── Reminders ─────────────────────────────────────────────────
 export const remindersApi = {
   getForLead: (leadId) => api.get(`/reminders/lead/${leadId}`),

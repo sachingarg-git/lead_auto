@@ -8,9 +8,9 @@ const logger = require('../config/logger');
 
 async function getLeads(req, res) {
   try {
-    const { status, source, assigned_to, client_type, search, page, limit } = req.query;
+    const { status, source, assigned_to, client_type, search, followup_date, page, limit } = req.query;
     const data = await Lead.findAll({
-      status, source, client_type,
+      status, source, client_type, followup_date,
       assigned_to: assigned_to ? parseInt(assigned_to) : undefined,
       search, page: parseInt(page) || 1, limit: parseInt(limit) || 20,
     });

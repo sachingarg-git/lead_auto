@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { io } from 'socket.io-client';
@@ -9,13 +9,14 @@ import { useAuth } from '../context/AuthContext';
 
 const STATUSES = ['New', 'FollowUp', 'DemoGiven', 'Converted', 'Lost', 'Nurture'];
 
-const STATUS_STYLE = {
-  New:       { bg: 'bg-sky-50',     text: 'text-sky-700',     border: 'border-sky-200',     dot: 'bg-sky-400',     card: 'border-sky-200 hover:border-sky-400',   cardBg: 'bg-sky-50',   num: 'text-sky-700',   icon: '🆕' },
-  FollowUp:  { bg: 'bg-amber-50',   text: 'text-amber-700',   border: 'border-amber-200',   dot: 'bg-amber-400',   card: 'border-amber-200 hover:border-amber-400', cardBg: 'bg-amber-50', num: 'text-amber-700', icon: '🔄' },
-  DemoGiven: { bg: 'bg-violet-50',  text: 'text-violet-700',  border: 'border-violet-200',  dot: 'bg-violet-400',  card: 'border-violet-200 hover:border-violet-400',cardBg:'bg-violet-50',num:'text-violet-700',icon:'🎯' },
-  Converted: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-400', card: 'border-emerald-200 hover:border-emerald-400',cardBg:'bg-emerald-50',num:'text-emerald-700',icon:'✅' },
-  Lost:      { bg: 'bg-red-50',     text: 'text-red-600',     border: 'border-red-200',     dot: 'bg-red-400',     card: 'border-red-200 hover:border-red-400',    cardBg: 'bg-red-50',   num: 'text-red-600',   icon: '❌' },
-  Nurture:   { bg: 'bg-pink-50',    text: 'text-pink-700',    border: 'border-pink-200',    dot: 'bg-pink-400',    card: 'border-pink-200 hover:border-pink-400',  cardBg: 'bg-pink-50',  num: 'text-pink-700',  icon: '🌱' },
+/* ── Per-status style tokens ─────────────────────────────────── */
+const S = {
+  New:       { accent: '#0ea5e9', light: '#f0f9ff', text: '#0369a1', dot: 'bg-sky-400',     border: 'border-sky-200',     badge: 'bg-sky-50 text-sky-700 border-sky-200'     },
+  FollowUp:  { accent: '#f59e0b', light: '#fffbeb', text: '#b45309', dot: 'bg-amber-400',   border: 'border-amber-200',   badge: 'bg-amber-50 text-amber-700 border-amber-200' },
+  DemoGiven: { accent: '#8b5cf6', light: '#f5f3ff', text: '#6d28d9', dot: 'bg-violet-400',  border: 'border-violet-200',  badge: 'bg-violet-50 text-violet-700 border-violet-200'},
+  Converted: { accent: '#10b981', light: '#ecfdf5', text: '#047857', dot: 'bg-emerald-400', border: 'border-emerald-200', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200'},
+  Lost:      { accent: '#ef4444', light: '#fef2f2', text: '#b91c1c', dot: 'bg-red-400',     border: 'border-red-200',     badge: 'bg-red-50 text-red-600 border-red-200'       },
+  Nurture:   { accent: '#ec4899', light: '#fdf2f8', text: '#9d174d', dot: 'bg-pink-400',    border: 'border-pink-200',    badge: 'bg-pink-50 text-pink-700 border-pink-200'    },
 };
 
 const STAT_KEY = {
@@ -23,14 +24,24 @@ const STAT_KEY = {
   Converted: 'converted', Lost: 'lost', Nurture: 'nurture',
 };
 
+/* ── Status card icons (SVG) ─────────────────────────────────── */
+const ICON = {
+  New:       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M12 4v16m8-8H4" />,
+  FollowUp:  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />,
+  DemoGiven: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 10l4.553-2.069A1 1 0 0121 8.82V15.18a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />,
+  Converted: <><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></>,
+  Lost:      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />,
+  Nurture:   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />,
+};
+
 const getSourceStyle = s => {
-  if (!s) return 'bg-slate-100 text-slate-700 border-slate-200';
+  if (!s) return 'bg-slate-100 text-slate-600 border-slate-200';
   const l = s.toLowerCase();
   if (l.includes('meta') || l.includes('facebook') || l.includes('instagram'))
     return 'bg-blue-50 text-blue-600 border-blue-200';
   if (l.includes('landing') || l.includes('form') || l.includes('page'))
     return 'bg-emerald-50 text-emerald-600 border-emerald-200';
-  if (l.includes('manual')) return 'bg-slate-100 text-slate-700 border-slate-200';
+  if (l.includes('manual')) return 'bg-slate-50 text-slate-600 border-slate-200';
   return 'bg-violet-50 text-violet-600 border-violet-200';
 };
 
@@ -39,24 +50,23 @@ const getSourceStyle = s => {
 ═══════════════════════════════════════════════════════════════ */
 export default function LeadsPage() {
   const { can } = useAuth();
-  const { t }   = useTranslation();
 
-  const [leads,   setLeads]   = useState([]);
-  const [total,   setTotal]   = useState(0);
-  const [page,    setPage]    = useState(1);
-  const [pages,   setPages]   = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [users,   setUsers]   = useState([]);
-  const [sources, setSources] = useState([]);
-  const [showAdd, setShowAdd] = useState(false);
-  const [stats,   setStats]   = useState({});
-  const [filters, setFilters] = useState({ status: '', source: '', client_type: '', search: '' });
+  const [leads,       setLeads]       = useState([]);
+  const [total,       setTotal]       = useState(0);
+  const [page,        setPage]        = useState(1);
+  const [pages,       setPages]       = useState(1);
+  const [loading,     setLoading]     = useState(true);
+  const [users,       setUsers]       = useState([]);
+  const [sources,     setSources]     = useState([]);
+  const [showAdd,     setShowAdd]     = useState(false);
+  const [stats,       setStats]       = useState({});
+  const [followupLead, setFollowupLead] = useState(null);
+  const [deleteId,    setDeleteId]    = useState(null);
 
-  // FollowUp modal state
-  const [followupLead, setFollowupLead] = useState(null); // lead object
-
-  // Delete confirm
-  const [deleteId, setDeleteId] = useState(null);
+  // Filters — including followup_date for Today / This Week cards
+  const [filters, setFilters] = useState({
+    status: '', source: '', client_type: '', search: '', followup_date: '',
+  });
 
   const loadLeads = useCallback(async () => {
     setLoading(true);
@@ -95,8 +105,19 @@ export default function LeadsPage() {
   }, [loadLeads, loadStats]);
 
   function setFilter(k, v) { setFilters(f => ({ ...f, [k]: v })); setPage(1); }
+
   function toggleStatusFilter(s) {
-    setFilters(f => ({ ...f, status: f.status === s ? '' : s }));
+    setFilters(f => ({ ...f, status: f.status === s ? '' : s, followup_date: '' }));
+    setPage(1);
+  }
+
+  function toggleFollowupDate(d) {
+    setFilters(f => ({ ...f, followup_date: f.followup_date === d ? '' : d, status: '' }));
+    setPage(1);
+  }
+
+  function clearAll() {
+    setFilters({ status: '', source: '', client_type: '', search: '', followup_date: '' });
     setPage(1);
   }
 
@@ -109,41 +130,69 @@ export default function LeadsPage() {
       setLeads(prev => prev.filter(l => l.id !== id));
       setDeleteId(null);
       loadStats();
-    } catch {
-      toast.error('Failed to delete lead');
-    }
+    } catch { toast.error('Failed to delete lead'); }
   }
 
   return (
     <div className="space-y-4 max-w-[1440px] mx-auto">
 
-      {/* ── Status Cards ─────────────────────────────────────── */}
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2.5">
+      {/* ── Status Cards Row ─────────────────────────────────── */}
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
         {STATUSES.map(s => {
-          const ss = STATUS_STYLE[s];
-          const count = stats[STAT_KEY[s]] ?? '—';
+          const st     = S[s];
+          const count  = stats[STAT_KEY[s]] ?? 0;
           const active = filters.status === s;
           return (
-            <button key={s} onClick={() => toggleStatusFilter(s)}
-              className={`rounded-xl border-2 px-3 py-2.5 text-left transition-all duration-200
-                          ${active
-                            ? `${ss.cardBg} ${ss.border} shadow-md scale-[1.03]`
-                            : `bg-white ${ss.card} shadow-sm hover:shadow-md hover:scale-[1.02]`
-                          }`}>
-              <div className="text-lg mb-0.5">{ss.icon}</div>
-              <div className={`text-xl font-black ${ss.num}`}>{count}</div>
-              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide mt-0.5">{s}</div>
-            </button>
+            <StatusCard key={s}
+              label={s}
+              count={count}
+              accent={st.accent}
+              light={st.light}
+              textColor={st.text}
+              icon={ICON[s]}
+              active={active}
+              onClick={() => toggleStatusFilter(s)}
+            />
           );
         })}
       </div>
 
+      {/* ── FollowUp Date Cards ───────────────────────────────── */}
+      <div className="grid grid-cols-2 gap-3">
+        <DateCard
+          label="Today's FollowUp"
+          sub="Leads due for follow-up today"
+          count={stats.today_followups ?? 0}
+          accent="#f59e0b"
+          light="#fffbeb"
+          textColor="#92400e"
+          active={filters.followup_date === 'today'}
+          onClick={() => toggleFollowupDate('today')}
+          icon={
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+              d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+          }
+        />
+        <DateCard
+          label="This Week's FollowUp"
+          sub="Leads due this week"
+          count={stats.week_followups ?? 0}
+          accent="#8b5cf6"
+          light="#f5f3ff"
+          textColor="#5b21b6"
+          active={filters.followup_date === 'week'}
+          onClick={() => toggleFollowupDate('week')}
+          icon={
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+              d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+          }
+        />
+      </div>
+
       {/* ── Toolbar ──────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2.5">
-
-        {/* Search */}
         <div className="relative flex-1 min-w-[200px]">
-          <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600 pointer-events-none"
+          <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none"
             fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -151,7 +200,7 @@ export default function LeadsPage() {
           <input
             className="w-full h-10 bg-white border border-slate-200 rounded-xl pl-10 pr-4
                        text-sm text-slate-700 placeholder-slate-400
-                       focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500/50
+                       focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-400
                        transition-all shadow-sm"
             placeholder="Search name, email, phone…"
             value={filters.search}
@@ -159,7 +208,6 @@ export default function LeadsPage() {
           />
         </div>
 
-        {/* Filters */}
         <FilterSelect value={filters.status} onChange={v => setFilter('status', v)} placeholder="All Statuses">
           {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
         </FilterSelect>
@@ -174,13 +222,10 @@ export default function LeadsPage() {
           <option value="Type2">No Meeting</option>
         </FilterSelect>
 
-        {/* Clear filters */}
         {activeFilters > 0 && (
-          <button
-            onClick={() => { setFilters({ status: '', source: '', client_type: '', search: '' }); setPage(1); }}
-            className="h-10 flex items-center gap-1.5 px-3 rounded-xl border border-slate-200
-                       text-xs font-semibold text-slate-700 hover:text-slate-700 hover:bg-slate-100
-                       bg-white shadow-sm transition-all">
+          <button onClick={clearAll}
+            className="h-10 flex items-center gap-1.5 px-3 rounded-xl border border-red-200
+                       text-xs font-semibold text-red-500 hover:bg-red-50 bg-white shadow-sm transition-all">
             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -188,7 +233,7 @@ export default function LeadsPage() {
           </button>
         )}
 
-        <div className="ml-auto flex items-center gap-1 text-xs text-slate-600 font-medium">
+        <div className="ml-auto flex items-center gap-1 text-xs text-slate-500 font-medium">
           <strong className="text-slate-700 text-sm">{total}</strong>
           lead{total !== 1 ? 's' : ''}
         </div>
@@ -196,7 +241,7 @@ export default function LeadsPage() {
         {can('leads:write') && (
           <button onClick={() => setShowAdd(true)}
             className="h-10 flex items-center gap-2 bg-brand-500 hover:bg-brand-600
-                       text-white font-bold text-sm px-4 rounded-xl transition-all duration-200"
+                       text-white font-bold text-sm px-4 rounded-xl transition-all"
             style={{ boxShadow: '0 2px 10px rgba(14,170,218,.30)' }}>
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -209,39 +254,36 @@ export default function LeadsPage() {
       {/* ── Table ────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden"
         style={{ boxShadow: '0 1px 4px rgba(0,0,0,.05)' }}>
-
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/70">
                 {['Lead','Company','Contact','Industry','Slot','Source','Status','Date','Actions'].map(h => (
                   <th key={h}
-                    className="px-4 py-3 text-[10px] font-bold text-slate-600
+                    className="px-4 py-3 text-[10px] font-bold text-slate-500
                                uppercase tracking-[0.1em] text-left whitespace-nowrap">
                     {h}
                   </th>
                 ))}
               </tr>
             </thead>
-
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-50">
               {loading ? (
                 <tr><td colSpan={9} className="py-20 text-center">
                   <div className="flex flex-col items-center gap-3">
                     <div className="relative w-8 h-8">
                       <div className="w-8 h-8 rounded-full border-2 border-slate-200" />
-                      <div className="w-8 h-8 rounded-full border-2 border-brand-500 border-t-transparent
-                                      animate-spin absolute inset-0" />
+                      <div className="w-8 h-8 rounded-full border-2 border-brand-500 border-t-transparent animate-spin absolute inset-0" />
                     </div>
-                    <span className="text-slate-600 text-xs">Loading leads…</span>
+                    <span className="text-slate-500 text-xs">Loading leads…</span>
                   </div>
                 </td></tr>
               ) : !leads.length ? (
                 <tr><td colSpan={9} className="py-20 text-center">
-                  <div className="text-4xl mb-3 opacity-25">👤</div>
+                  <div className="text-4xl mb-3 opacity-20">👤</div>
                   <div className="text-slate-600 text-sm font-medium">No leads found</div>
                   {activeFilters > 0 && (
-                    <button onClick={() => setFilters({ status: '', source: '', client_type: '', search: '' })}
+                    <button onClick={clearAll}
                       className="mt-2 text-xs text-brand-500 hover:text-brand-600 font-semibold">
                       Clear filters
                     </button>
@@ -249,8 +291,6 @@ export default function LeadsPage() {
                 </td></tr>
               ) : leads.map(lead => (
                 <LeadRow key={lead.id} lead={lead}
-                  canStatus={can('leads:status')}
-                  canWrite={can('leads:write')}
                   onFollowUp={() => setFollowupLead(lead)}
                   onDelete={() => setDeleteId(lead.id)}
                 />
@@ -259,14 +299,11 @@ export default function LeadsPage() {
           </table>
         </div>
 
-        {/* Pagination */}
         {pages > 1 && (
-          <div className="flex items-center justify-between px-5 py-3.5
-                          border-t border-slate-100 bg-slate-50/50">
-            <span className="text-xs text-slate-600">
-              Page <strong className="text-slate-600">{page}</strong> of{' '}
-              <strong className="text-slate-600">{pages}</strong>
-              <span className="text-slate-400 ml-2">· {total} total</span>
+          <div className="flex items-center justify-between px-5 py-3.5 border-t border-slate-100 bg-slate-50/50">
+            <span className="text-xs text-slate-500">
+              Page <strong className="text-slate-700">{page}</strong> of <strong className="text-slate-700">{pages}</strong>
+              <span className="text-slate-300 ml-2">· {total} total</span>
             </span>
             <div className="flex items-center gap-1">
               <PagBtn onClick={() => setPage(1)}           disabled={page === 1}     label="«" />
@@ -277,9 +314,7 @@ export default function LeadsPage() {
                 return p <= pages ? (
                   <button key={p} onClick={() => setPage(p)}
                     className={`w-8 h-8 rounded-lg text-xs font-semibold transition-all ${
-                      p === page
-                        ? 'bg-brand-500 text-white shadow-sm'
-                        : 'text-slate-700 hover:bg-slate-100'
+                      p === page ? 'bg-brand-500 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
                     }`}>
                     {p}
                   </button>
@@ -298,56 +333,162 @@ export default function LeadsPage() {
           onClose={() => setShowAdd(false)}
           onSuccess={() => { setShowAdd(false); loadLeads(); loadStats(); }} />
       )}
-
       {followupLead && (
-        <FollowUpModal
-          lead={followupLead}
+        <FollowUpModal lead={followupLead}
           onClose={() => setFollowupLead(null)}
-          onSuccess={() => { setFollowupLead(null); loadLeads(); loadStats(); }}
-        />
+          onSuccess={() => { setFollowupLead(null); loadLeads(); loadStats(); }} />
       )}
-
       {deleteId && (
         <DeleteConfirm
           onConfirm={() => handleDelete(deleteId)}
-          onCancel={() => setDeleteId(null)}
-        />
+          onCancel={() => setDeleteId(null)} />
       )}
     </div>
   );
 }
 
+/* ── Professional Status Card ─────────────────────────────────── */
+function StatusCard({ label, count, accent, light, textColor, icon, active, onClick }) {
+  return (
+    <button onClick={onClick}
+      className="relative bg-white rounded-2xl border border-slate-200 text-left
+                 transition-all duration-200 overflow-hidden group
+                 hover:shadow-lg hover:-translate-y-0.5"
+      style={{
+        boxShadow: active ? `0 0 0 2px ${accent}, 0 4px 16px ${accent}22` : '0 1px 4px rgba(0,0,0,.06)',
+        borderColor: active ? accent : undefined,
+      }}>
+      {/* Colored top strip */}
+      <div className="h-1 w-full" style={{ background: active ? accent : `${accent}40` }} />
+
+      <div className="px-3.5 pt-3 pb-3.5">
+        {/* Icon circle */}
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-2.5 transition-colors"
+          style={{ background: active ? `${accent}18` : `${accent}0d` }}>
+          <svg className="w-4.5 h-4.5" style={{ width: 18, height: 18, color: accent }}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            {icon}
+          </svg>
+        </div>
+
+        {/* Count */}
+        <div className="text-2xl font-black leading-none mb-1" style={{ color: active ? accent : textColor }}>
+          {count}
+        </div>
+
+        {/* Label */}
+        <div className="text-[10px] font-bold uppercase tracking-wider"
+          style={{ color: active ? accent : '#94a3b8' }}>
+          {label}
+        </div>
+      </div>
+
+      {/* Active indicator dot */}
+      {active && (
+        <div className="absolute top-3 right-3 w-2 h-2 rounded-full" style={{ background: accent }} />
+      )}
+    </button>
+  );
+}
+
+/* ── FollowUp Date Card (wider) ──────────────────────────────── */
+function DateCard({ label, sub, count, accent, light, textColor, icon, active, onClick }) {
+  return (
+    <button onClick={onClick}
+      className="relative bg-white rounded-2xl border border-slate-200 text-left
+                 transition-all duration-200 overflow-hidden
+                 hover:shadow-lg hover:-translate-y-0.5"
+      style={{
+        boxShadow: active ? `0 0 0 2px ${accent}, 0 4px 20px ${accent}22` : '0 1px 4px rgba(0,0,0,.06)',
+        borderColor: active ? accent : undefined,
+      }}>
+      {/* Colored top strip */}
+      <div className="h-1 w-full" style={{ background: active ? accent : `${accent}50` }} />
+
+      <div className="flex items-center gap-4 px-5 py-4">
+        {/* Icon */}
+        <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
+          style={{ background: active ? `${accent}18` : `${accent}0d` }}>
+          <svg style={{ width: 22, height: 22, color: accent }}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            {icon}
+          </svg>
+        </div>
+
+        {/* Text */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-black leading-none" style={{ color: active ? accent : textColor }}>
+              {count}
+            </span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">leads</span>
+          </div>
+          <div className="font-bold text-slate-700 text-sm mt-0.5">{label}</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">{sub}</div>
+        </div>
+
+        {/* Arrow */}
+        <svg className="w-4 h-4 text-slate-300 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/>
+        </svg>
+      </div>
+
+      {active && (
+        <div className="absolute top-3 right-3 w-2 h-2 rounded-full" style={{ background: accent }} />
+      )}
+    </button>
+  );
+}
+
 /* ── Lead Row ─────────────────────────────────────────────────── */
-function LeadRow({ lead, canStatus, canWrite, onFollowUp, onDelete }) {
-  const ss = STATUS_STYLE[lead.status] || STATUS_STYLE.New;
+function LeadRow({ lead, onFollowUp, onDelete }) {
+  const st = S[lead.status] || S.New;
+  const followupCount = parseInt(lead.followup_count) || 0;
 
   return (
     <tr className="group hover:bg-slate-50/60 transition-colors">
 
-      {/* Name — clickable to open followup */}
+      {/* Name + followup badge */}
       <td className="px-4 py-3">
-        <button onClick={onFollowUp} className="flex items-center gap-2.5 group/link text-left w-full">
-          <div className="w-8 h-8 rounded-full bg-brand-500/10 border border-brand-500/15
-                          flex items-center justify-center text-brand-600 text-xs font-bold shrink-0">
-            {lead.full_name?.[0]?.toUpperCase()}
+        <button onClick={onFollowUp} className="flex items-center gap-2.5 text-left w-full group/link">
+          <div className="relative shrink-0">
+            <div className="w-8 h-8 rounded-full bg-brand-500/10 border border-brand-500/15
+                            flex items-center justify-center text-brand-600 text-xs font-bold">
+              {lead.full_name?.[0]?.toUpperCase()}
+            </div>
+            {/* FollowUp count badge */}
+            {followupCount > 0 && (
+              <div className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-400
+                              flex items-center justify-center text-white text-[9px] font-black
+                              border border-white shadow-sm">
+                {followupCount > 9 ? '9+' : followupCount}
+              </div>
+            )}
           </div>
           <div>
             <div className="font-semibold text-slate-800 group-hover/link:text-brand-600
                             transition-colors text-[13px] whitespace-nowrap">
               {lead.full_name}
             </div>
-            {lead.client_type === 'Type1' && (
-              <span className="text-[9px] font-bold text-violet-500 uppercase tracking-wide">
-                Meeting Booked
-              </span>
-            )}
+            <div className="flex items-center gap-1.5 mt-0.5">
+              {lead.client_type === 'Type1' && (
+                <span className="text-[9px] font-bold text-violet-500 uppercase tracking-wide">
+                  📅 Meeting Booked
+                </span>
+              )}
+              {followupCount > 0 && (
+                <span className="text-[9px] text-amber-500 font-semibold">
+                  {followupCount} follow-up{followupCount > 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
           </div>
         </button>
       </td>
 
       {/* Company */}
       <td className="px-4 py-3">
-        <span className="text-[12px] text-slate-700 max-w-[130px] block truncate" title={lead.company}>
+        <span className="text-[12px] text-slate-600 max-w-[130px] block truncate" title={lead.company}>
           {lead.company || <span className="text-slate-300">—</span>}
         </span>
       </td>
@@ -367,25 +508,21 @@ function LeadRow({ lead, canStatus, canWrite, onFollowUp, onDelete }) {
           </a>
         ) : <span className="text-slate-300 text-xs">—</span>}
         {lead.email && (
-          <div className="text-[10px] text-slate-600 mt-0.5 truncate max-w-[150px]">{lead.email}</div>
+          <div className="text-[10px] text-slate-500 mt-0.5 truncate max-w-[150px]">{lead.email}</div>
         )}
       </td>
 
       {/* Industry */}
       <td className="px-4 py-3">
-        <span className="text-[12px] text-slate-700">
+        <span className="text-[12px] text-slate-600">
           {lead.industry || <span className="text-slate-300">—</span>}
         </span>
       </td>
 
       {/* Slot */}
       <td className="px-4 py-3">
-        <SlotCell
-          slotDate={lead.slot_date}
-          slotTime={lead.slot_time}
-          preferred={lead.preferred_slot}
-          meetingDatetime={lead.meeting_datetime}
-        />
+        <SlotCell slotDate={lead.slot_date} slotTime={lead.slot_time}
+          preferred={lead.preferred_slot} meetingDatetime={lead.meeting_datetime} />
       </td>
 
       {/* Source */}
@@ -395,15 +532,14 @@ function LeadRow({ lead, canStatus, canWrite, onFollowUp, onDelete }) {
                               font-semibold border ${getSourceStyle(lead.source)}`}>
               {lead.source}
             </span>
-          : <span className="text-slate-300 text-xs">—</span>
-        }
+          : <span className="text-slate-300 text-xs">—</span>}
       </td>
 
-      {/* Status — static badge, no dropdown */}
+      {/* Status badge — static, no dropdown */}
       <td className="px-4 py-3">
         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border
-                          text-[11px] font-semibold ${ss.bg} ${ss.text} ${ss.border}`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${ss.dot}`} />
+                          text-[11px] font-semibold ${st.badge}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
           {lead.status}
         </span>
       </td>
@@ -413,7 +549,7 @@ function LeadRow({ lead, canStatus, canWrite, onFollowUp, onDelete }) {
         <div className="text-[12px] font-semibold text-slate-600">
           {format(new Date(lead.created_at), 'dd MMM')}
         </div>
-        <div className="text-[10px] text-slate-500">
+        <div className="text-[10px] text-slate-400">
           {format(new Date(lead.created_at), 'HH:mm')}
         </div>
       </td>
@@ -421,33 +557,27 @@ function LeadRow({ lead, canStatus, canWrite, onFollowUp, onDelete }) {
       {/* Actions */}
       <td className="px-4 py-3">
         <div className="flex items-center gap-1">
-          {/* View */}
-          <Link to={`/leads/${lead.id}`}
-            title="View Detail"
+          <Link to={`/leads/${lead.id}`} title="View Detail"
             className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200
-                       bg-white text-slate-500 hover:text-brand-600 hover:border-brand-300 hover:bg-brand-50
-                       transition-all duration-150 shadow-sm">
+                       bg-white text-slate-400 hover:text-brand-600 hover:border-brand-300 hover:bg-brand-50
+                       transition-all shadow-sm">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
               <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
             </svg>
           </Link>
-
-          {/* FollowUp */}
           <button onClick={onFollowUp} title="Add FollowUp"
             className="w-7 h-7 flex items-center justify-center rounded-lg border border-amber-200
-                       bg-amber-50 text-amber-600 hover:bg-amber-100 hover:border-amber-400
-                       transition-all duration-150 shadow-sm">
+                       bg-amber-50 text-amber-500 hover:bg-amber-100 hover:border-amber-400
+                       transition-all shadow-sm">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
             </svg>
           </button>
-
-          {/* Delete */}
           <button onClick={onDelete} title="Delete Lead"
             className="w-7 h-7 flex items-center justify-center rounded-lg border border-red-200
-                       bg-red-50 text-red-500 hover:bg-red-100 hover:border-red-400
-                       transition-all duration-150 shadow-sm">
+                       bg-red-50 text-red-400 hover:bg-red-100 hover:border-red-400
+                       transition-all shadow-sm">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
             </svg>
@@ -465,10 +595,9 @@ function FollowUpModal({ lead, onClose, onSuccess }) {
   const [history, setHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const ss = STATUS_STYLE[lead.status] || STATUS_STYLE.New;
+  const st = S[lead.status] || S.New;
 
   useEffect(() => {
-    setLoadingHistory(true);
     leadsApi.getFollowUps(lead.id)
       .then(r => setHistory(r.data))
       .catch(() => {})
@@ -499,29 +628,27 @@ function FollowUpModal({ lead, onClose, onSuccess }) {
         style={{ boxShadow: '0 24px 60px rgba(0,0,0,.15)' }}>
 
         {/* Header */}
-        <div className={`flex items-center justify-between px-5 py-4 border-b border-slate-100 ${ss.cardBg} rounded-t-2xl`}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 rounded-t-2xl"
+          style={{ background: `${S[lead.status]?.accent || '#0ea5e9'}08` }}>
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-white/80 border border-white/60
-                            flex items-center justify-center font-bold text-slate-700 shadow-sm">
+            <div className="w-9 h-9 rounded-full bg-white border border-slate-200
+                            flex items-center justify-center font-bold text-slate-700 shadow-sm text-sm">
               {lead.full_name?.[0]?.toUpperCase()}
             </div>
             <div>
               <h2 className="font-bold text-slate-800 text-base leading-tight">{lead.full_name}</h2>
               <div className="flex items-center gap-2 mt-0.5">
                 <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px]
-                                  font-bold border ${ss.bg} ${ss.text} ${ss.border}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${ss.dot}`} />
+                                  font-bold border ${st.badge}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
                   {lead.status}
                 </span>
-                {lead.phone && (
-                  <span className="text-[11px] text-slate-600">{lead.phone}</span>
-                )}
+                {lead.phone && <span className="text-[11px] text-slate-500">{lead.phone}</span>}
               </div>
             </div>
           </div>
           <button onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 transition-colors p-1.5
-                       hover:bg-white/60 rounded-lg">
+            className="text-slate-400 hover:text-slate-700 transition-colors p-1.5 hover:bg-white/60 rounded-lg">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -530,23 +657,20 @@ function FollowUpModal({ lead, onClose, onSuccess }) {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
-
-          {/* Status selector */}
+          {/* Status picker */}
           <div>
-            <Label>Update Status</Label>
-            <div className="flex flex-wrap gap-2 mt-2">
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+              Update Status
+            </label>
+            <div className="flex flex-wrap gap-2">
               {STATUSES.map(s => {
-                const sty = STATUS_STYLE[s];
+                const sty = S[s];
                 const active = form.status === s;
                 return (
-                  <button type="button" key={s}
-                    onClick={() => set('status', s)}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px]
-                                font-bold border-2 transition-all duration-150
-                                ${active
-                                  ? `${sty.bg} ${sty.text} ${sty.border} shadow-sm scale-105`
-                                  : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'
-                                }`}>
+                  <button type="button" key={s} onClick={() => set('status', s)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
+                                text-[11px] font-bold border-2 transition-all duration-150
+                                ${active ? `${sty.badge} scale-105 shadow-sm` : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${sty.dot}`} />
                     {s}
                   </button>
@@ -557,31 +681,34 @@ function FollowUpModal({ lead, onClose, onSuccess }) {
 
           {/* Note */}
           <div>
-            <Label>Follow-up Note *</Label>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+              Follow-up Note *
+            </label>
             <textarea
-              className="w-full mt-1.5 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl
                          text-sm text-slate-700 placeholder-slate-400 resize-none h-24
-                         focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-400
-                         transition-all"
+                         focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-400 transition-all"
               placeholder="What happened? Next action, outcome, key points…"
               value={form.note}
               onChange={e => set('note', e.target.value)}
             />
           </div>
 
-          {/* Next followup date */}
+          {/* Next date */}
           <div>
-            <Label>Next Follow-up Date</Label>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+              Next Follow-up Date
+            </label>
             <input type="date"
-              className="mt-1.5 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl
                          text-sm text-slate-700 focus:outline-none focus:ring-2
-                         focus:ring-brand-500/20 focus:border-brand-400 transition-all w-full"
+                         focus:ring-brand-500/20 focus:border-brand-400 transition-all"
               value={form.next_followup_date}
               onChange={e => set('next_followup_date', e.target.value)}
             />
           </div>
 
-          <div className="flex gap-2.5 pt-2">
+          <div className="flex gap-2.5 pt-1">
             <button type="button" onClick={onClose}
               className="flex-1 h-10 rounded-xl border border-slate-200 text-slate-600
                          text-sm font-semibold hover:bg-slate-50 transition-all">
@@ -595,60 +722,54 @@ function FollowUpModal({ lead, onClose, onSuccess }) {
                 ? <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-                    </svg> Saving…</>
+                    </svg>Saving…</>
                 : <><svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
-                    </svg> Save FollowUp</>
+                    </svg>Save FollowUp</>
               }
             </button>
           </div>
         </form>
 
-        {/* ── History ──────────────────────────────────────── */}
+        {/* History */}
         <div className="border-t border-slate-100 px-5 py-4">
-          <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-3">
+          <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">
             FollowUp History
           </h3>
           {loadingHistory ? (
-            <div className="flex items-center gap-2 text-slate-400 text-xs py-3">
+            <div className="flex items-center gap-2 text-slate-400 text-xs py-2">
               <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-              </svg>
-              Loading history…
+              </svg> Loading…
             </div>
-          ) : history.length === 0 ? (
-            <p className="text-xs text-slate-400 italic py-2">No followups recorded yet.</p>
+          ) : !history.length ? (
+            <p className="text-xs text-slate-400 italic py-1">No followups recorded yet.</p>
           ) : (
-            <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+            <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
               {history.map((h, i) => {
-                const hss = STATUS_STYLE[h.status] || STATUS_STYLE.New;
+                const hst = S[h.status] || S.New;
                 return (
                   <div key={h.id || i}
                     className="flex gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
-                    {/* timeline dot */}
-                    <div className="flex flex-col items-center">
-                      <span className={`w-2.5 h-2.5 rounded-full mt-0.5 shrink-0 ${hss.dot}`} />
-                      {i < history.length - 1 && (
-                        <div className="w-px flex-1 bg-slate-200 mt-1" />
-                      )}
+                    <div className="flex flex-col items-center pt-0.5">
+                      <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${hst.dot}`} />
+                      {i < history.length - 1 && <div className="w-px flex-1 bg-slate-200 mt-1" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px]
-                                          font-bold border ${hss.bg} ${hss.text} ${hss.border}`}>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full
+                                          text-[10px] font-bold border ${hst.badge}`}>
                           {h.status}
                         </span>
                         {h.next_followup_date && (
                           <span className="text-[10px] text-violet-600 font-semibold bg-violet-50
                                            border border-violet-100 px-1.5 py-0.5 rounded-full">
-                            📅 Next: {String(h.next_followup_date).substring(0, 10)}
+                            📅 {String(h.next_followup_date).substring(0, 10)}
                           </span>
                         )}
                       </div>
-                      {h.note && (
-                        <p className="text-[12px] text-slate-700 mt-1 leading-relaxed">{h.note}</p>
-                      )}
+                      {h.note && <p className="text-[12px] text-slate-700 mt-1 leading-relaxed">{h.note}</p>}
                       <div className="text-[10px] text-slate-400 mt-1">
                         {h.created_by_name && <span className="font-medium text-slate-500">{h.created_by_name} · </span>}
                         {h.created_at && format(new Date(h.created_at), 'dd MMM yyyy, hh:mm a')}
@@ -679,20 +800,14 @@ function DeleteConfirm({ onConfirm, onCancel }) {
           </svg>
         </div>
         <h3 className="font-bold text-slate-800 text-base mb-1">Delete Lead?</h3>
-        <p className="text-sm text-slate-500 mb-5">
-          This will permanently delete the lead and all its followup history. This cannot be undone.
-        </p>
+        <p className="text-sm text-slate-500 mb-5">All followup history will be permanently deleted.</p>
         <div className="flex gap-3">
           <button onClick={onCancel}
             className="flex-1 h-10 rounded-xl border border-slate-200 text-slate-600
-                       text-sm font-semibold hover:bg-slate-50 transition-all">
-            Cancel
-          </button>
+                       text-sm font-semibold hover:bg-slate-50 transition-all">Cancel</button>
           <button onClick={onConfirm}
             className="flex-1 h-10 rounded-xl bg-red-500 hover:bg-red-600 text-white
-                       text-sm font-bold transition-all shadow-sm">
-            Delete
-          </button>
+                       text-sm font-bold transition-all shadow-sm">Delete</button>
         </div>
       </div>
     </div>
@@ -703,21 +818,16 @@ function DeleteConfirm({ onConfirm, onCancel }) {
 function FilterSelect({ value, onChange, placeholder, children }) {
   return (
     <div className="relative">
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
+      <select value={value} onChange={e => onChange(e.target.value)}
         className={`h-10 appearance-none bg-white border rounded-xl px-3.5 pr-8
-                    text-sm font-medium transition-all focus:outline-none
-                    focus:ring-2 focus:ring-brand-500/20 cursor-pointer shadow-sm
-                    ${value
-                      ? 'border-brand-400/60 text-brand-600'
-                      : 'border-slate-200 text-slate-700 hover:border-slate-300'
-                    }`}>
+                    text-sm font-medium transition-all focus:outline-none shadow-sm cursor-pointer
+                    focus:ring-2 focus:ring-brand-500/20
+                    ${value ? 'border-brand-400/60 text-brand-600' : 'border-slate-200 text-slate-600 hover:border-slate-300'}`}>
         <option value="">{placeholder}</option>
         {children}
       </select>
       <svg className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5
-                      text-slate-600 pointer-events-none"
+                      text-slate-400 pointer-events-none"
         fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
       </svg>
@@ -729,7 +839,7 @@ function FilterSelect({ value, onChange, placeholder, children }) {
 function PagBtn({ onClick, disabled, label }) {
   return (
     <button onClick={onClick} disabled={disabled}
-      className="w-8 h-8 rounded-lg text-xs font-bold text-slate-600
+      className="w-8 h-8 rounded-lg text-xs font-bold text-slate-500
                  hover:text-slate-700 hover:bg-slate-100
                  disabled:opacity-30 disabled:cursor-not-allowed transition-all">
       {label}
@@ -737,20 +847,18 @@ function PagBtn({ onClick, disabled, label }) {
   );
 }
 
-/* ── Slot cell ───────────────────────────────────────────────── */
+/* ── Slot Cell ───────────────────────────────────────────────── */
 function SlotCell({ slotDate, slotTime, preferred, meetingDatetime }) {
   if (slotDate) {
     const dateStr = String(slotDate).substring(0, 10);
     const [y, m, d] = dateStr.split('-');
-    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const display = `${d} ${monthNames[parseInt(m, 10) - 1]} ${y}`;
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const display = `${d} ${months[parseInt(m,10)-1]} ${y}`;
     let timeDisplay = '';
     if (slotTime) {
       const parts = String(slotTime).split(':');
       const hh = parseInt(parts[0], 10);
-      const mm = parts[1] || '00';
-      const ampm = hh >= 12 ? 'PM' : 'AM';
-      timeDisplay = `${hh % 12 || 12}:${mm} ${ampm}`;
+      timeDisplay = `${hh % 12 || 12}:${parts[1]} ${hh >= 12 ? 'PM' : 'AM'}`;
     }
     return (
       <div>
@@ -763,14 +871,12 @@ function SlotCell({ slotDate, slotTime, preferred, meetingDatetime }) {
   if (!raw) return <span className="text-slate-300 text-xs">—</span>;
   try {
     const dt = new Date(raw);
-    if (!isNaN(dt.getTime())) {
-      return (
-        <div>
-          <div className="text-[11px] font-bold text-violet-700">{format(dt, 'dd MMM yyyy')}</div>
-          <div className="text-[10px] text-violet-500 font-medium mt-0.5">{format(dt, 'hh:mm a')}</div>
-        </div>
-      );
-    }
+    if (!isNaN(dt.getTime())) return (
+      <div>
+        <div className="text-[11px] font-bold text-violet-700">{format(dt, 'dd MMM yyyy')}</div>
+        <div className="text-[10px] text-violet-500 font-medium mt-0.5">{format(dt, 'hh:mm a')}</div>
+      </div>
+    );
   } catch {}
   return <span className="text-[11px] text-violet-600 font-medium">{String(raw)}</span>;
 }
@@ -782,17 +888,31 @@ function AddLeadModal({ users, sources, onClose, onSuccess }) {
   const [form, setForm] = useState({
     full_name: '', email: '', phone: '', source: 'Manual',
     client_type: 'Type2', status: 'New', assigned_to: '', notes: '',
-    company: '', industry: '',
+    company: '', industry: '', slot_date: '', slot_time: '',
   });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  function handleSlotDate(v) {
+    set('slot_date', v);
+    if (v) set('client_type', 'Type1');
+    else set('client_type', 'Type2');
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!form.full_name.trim()) { toast.error('Name is required'); return; }
     setSaving(true);
     try {
-      await leadsApi.create({ ...form, assigned_to: form.assigned_to ? parseInt(form.assigned_to) : null });
+      await leadsApi.create({
+        ...form,
+        assigned_to: form.assigned_to ? parseInt(form.assigned_to) : null,
+        slot_date: form.slot_date || null,
+        slot_time: form.slot_time || null,
+        preferred_slot: form.slot_date
+          ? (form.slot_time ? `${form.slot_date} ${form.slot_time}` : form.slot_date)
+          : null,
+      });
       toast.success('Lead created & automations triggered!');
       onSuccess();
     } catch (err) {
@@ -809,7 +929,7 @@ function AddLeadModal({ users, sources, onClose, onSuccess }) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div>
             <h2 className="font-bold text-slate-800 text-base">Add New Lead</h2>
-            <p className="text-xs text-slate-600 mt-0.5">Automations trigger on save</p>
+            <p className="text-xs text-slate-500 mt-0.5">Automations trigger on save</p>
           </div>
           <button onClick={onClose}
             className="text-slate-400 hover:text-slate-700 transition-colors p-1.5 hover:bg-slate-100 rounded-lg">
@@ -826,59 +946,85 @@ function AddLeadModal({ users, sources, onClose, onSuccess }) {
               <input className="input mt-1" placeholder="Sachin Singhal"
                 value={form.full_name} onChange={e => set('full_name', e.target.value)} />
             </div>
-            <div>
-              <Label>Email</Label>
+            <div><Label>Email</Label>
               <input className="input mt-1" type="email" placeholder="name@example.com"
                 value={form.email} onChange={e => set('email', e.target.value)} />
             </div>
-            <div>
-              <Label>Phone</Label>
+            <div><Label>Phone</Label>
               <input className="input mt-1" placeholder="+91 99999 99999"
                 value={form.phone} onChange={e => set('phone', e.target.value)} />
             </div>
-            <div>
-              <Label>Company</Label>
+            <div><Label>Company</Label>
               <input className="input mt-1" placeholder="Wizone AI Labs"
                 value={form.company} onChange={e => set('company', e.target.value)} />
             </div>
-            <div>
-              <Label>Industry</Label>
+            <div><Label>Industry</Label>
               <input className="input mt-1" placeholder="Technology"
                 value={form.industry} onChange={e => set('industry', e.target.value)} />
             </div>
-            <div>
-              <Label>Source</Label>
+            <div><Label>Source</Label>
               <select className="input mt-1" value={form.source} onChange={e => set('source', e.target.value)}>
                 <option value="Manual">Manual</option>
                 {sources.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
-            <div>
-              <Label>Type</Label>
-              <select className="input mt-1" value={form.client_type} onChange={e => set('client_type', e.target.value)}>
-                <option value="Type2">No Meeting</option>
-                <option value="Type1">Meeting Booked</option>
-              </select>
-            </div>
-            <div>
-              <Label>Assign To</Label>
+            <div><Label>Assign To</Label>
               <select className="input mt-1" value={form.assigned_to} onChange={e => set('assigned_to', e.target.value)}>
                 <option value="">Unassigned</option>
                 {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
             </div>
-            <div>
-              <Label>Status</Label>
+            <div><Label>Status</Label>
               <select className="input mt-1" value={form.status} onChange={e => set('status', e.target.value)}>
                 {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
+            <div><Label>Type</Label>
+              <select className="input mt-1" value={form.client_type} onChange={e => set('client_type', e.target.value)}>
+                <option value="Type2">No Meeting</option>
+                <option value="Type1">Meeting Booked</option>
+              </select>
+            </div>
+
+            {/* Slot Booking */}
+            <div className="col-span-2 mt-1">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="h-px flex-1 bg-slate-100" />
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  📅 Slot Booking (Optional)
+                </span>
+                <div className="h-px flex-1 bg-slate-100" />
+              </div>
+            </div>
+            <div><Label>Appointment Date</Label>
+              <input type="date" className="input mt-1"
+                value={form.slot_date} onChange={e => handleSlotDate(e.target.value)} />
+            </div>
+            <div><Label>Appointment Time</Label>
+              <input type="time" className="input mt-1"
+                value={form.slot_time} onChange={e => set('slot_time', e.target.value)} />
+            </div>
+            {form.slot_date && (
+              <div className="col-span-2">
+                <div className="flex items-center gap-2 px-3 py-2 bg-violet-50 border border-violet-200 rounded-xl">
+                  <span className="text-violet-500">📅</span>
+                  <span className="text-[12px] font-semibold text-violet-700">
+                    {form.slot_date}{form.slot_time && ` at ${form.slot_time}`}
+                  </span>
+                  <span className="ml-auto text-[10px] bg-violet-200 text-violet-700 px-2 py-0.5 rounded-full font-bold">
+                    Reminders will trigger
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div className="col-span-2">
               <Label>Notes</Label>
               <textarea className="input mt-1 resize-none h-20 text-sm" placeholder="Any notes…"
                 value={form.notes} onChange={e => set('notes', e.target.value)} />
             </div>
           </div>
+
           <div className="flex gap-3 mt-4 pt-4 border-t border-slate-100">
             <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancel</button>
             <button type="submit" disabled={saving}
@@ -887,7 +1033,7 @@ function AddLeadModal({ users, sources, onClose, onSuccess }) {
                 ? <><svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-                    </svg> Creating…</>
+                    </svg>Creating…</>
                 : 'Create Lead'
               }
             </button>
@@ -900,8 +1046,6 @@ function AddLeadModal({ users, sources, onClose, onSuccess }) {
 
 function Label({ children }) {
   return (
-    <span className="block text-[11px] font-bold text-slate-600 uppercase tracking-wide">
-      {children}
-    </span>
+    <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide">{children}</span>
   );
 }

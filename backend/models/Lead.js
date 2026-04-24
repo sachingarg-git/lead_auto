@@ -62,29 +62,58 @@ const Lead = {
     return result.recordset[0] || null;
   },
 
-  async findAll({ status, source, assigned_to, client_type, search, page = 1, limit = 20 }) {
+  async findAll({ status, source, assigned_to, client_type, search, followup_date, page = 1, limit = 20 }) {
     const offset = (page - 1) * limit;
-    let where = 'WHERE 1=1';
     const params = { offset, limit };
 
-    if (status) { where += ' AND l.status = @status'; params.status = status; }
-    if (source) { where += ' AND l.source = @source'; params.source = source; }
+    // Base join — always include followup_count + latest next_followup_date
+    let fromClause = `
+      FROM Leads l
+      LEFT JOIN Users u ON l.assigned_to = u.id
+      LEFT JOIN (
+        SELECT lead_id, COUNT(*) AS followup_count
+        FROM FollowUps
+        GROUP BY lead_id
+      ) fc ON fc.lead_id = l.id
+    `;
+
+    // followup_date filter: join to latest followup per lead
+    if (followup_date === 'today' || followup_date === 'week') {
+      fromClause += `
+        INNER JOIN (
+          SELECT lead_id, next_followup_date,
+                 ROW_NUMBER() OVER (PARTITION BY lead_id ORDER BY created_at DESC) AS rn
+          FROM FollowUps
+          WHERE next_followup_date IS NOT NULL
+        ) lf ON lf.lead_id = l.id AND lf.rn = 1
+      `;
+    }
+
+    let where = 'WHERE 1=1';
+    if (status)      { where += ' AND l.status = @status';           params.status = status; }
+    if (source)      { where += ' AND l.source = @source';           params.source = source; }
     if (client_type) { where += ' AND l.client_type = @client_type'; params.client_type = client_type; }
     if (assigned_to) { where += ' AND l.assigned_to = @assigned_to'; params.assigned_to = assigned_to; }
     if (search) {
       where += ` AND (l.full_name LIKE @search OR l.email LIKE @search OR l.phone LIKE @search)`;
       params.search = `%${search}%`;
     }
+    if (followup_date === 'today') {
+      where += ` AND CAST(lf.next_followup_date AS DATE) = CAST(GETDATE() AS DATE)`;
+    } else if (followup_date === 'week') {
+      where += ` AND lf.next_followup_date >= CAST(DATEADD(DAY, 1-DATEPART(WEEKDAY, GETDATE()), GETDATE()) AS DATE)
+                 AND lf.next_followup_date <  CAST(DATEADD(DAY, 8-DATEPART(WEEKDAY, GETDATE()), GETDATE()) AS DATE)`;
+    }
 
     const countRes = await query(
-      `SELECT COUNT(*) AS total FROM Leads l ${where}`, params
+      `SELECT COUNT(*) AS total ${fromClause} ${where}`, params
     );
     const total = countRes.recordset[0].total;
 
     const result = await query(
-      `SELECT l.*, u.name AS assigned_to_name
-       FROM Leads l
-       LEFT JOIN Users u ON l.assigned_to = u.id
+      `SELECT l.*, u.name AS assigned_to_name,
+              ISNULL(fc.followup_count, 0) AS followup_count
+       ${fromClause}
        ${where}
        ORDER BY l.created_at DESC
        OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY`,
@@ -127,17 +156,38 @@ const Lead = {
     const result = await query(`
       SELECT
         COUNT(*) AS total,
-        SUM(CASE WHEN status='New' THEN 1 ELSE 0 END) AS new_leads,
-        SUM(CASE WHEN status='FollowUp' THEN 1 ELSE 0 END) AS follow_up,
+        SUM(CASE WHEN status='New'       THEN 1 ELSE 0 END) AS new_leads,
+        SUM(CASE WHEN status='FollowUp'  THEN 1 ELSE 0 END) AS follow_up,
         SUM(CASE WHEN status='DemoGiven' THEN 1 ELSE 0 END) AS demo_given,
         SUM(CASE WHEN status='Converted' THEN 1 ELSE 0 END) AS converted,
-        SUM(CASE WHEN status='Lost' THEN 1 ELSE 0 END) AS lost,
-        SUM(CASE WHEN status='Nurture' THEN 1 ELSE 0 END) AS nurture,
+        SUM(CASE WHEN status='Lost'      THEN 1 ELSE 0 END) AS lost,
+        SUM(CASE WHEN status='Nurture'   THEN 1 ELSE 0 END) AS nurture,
         SUM(CASE WHEN client_type='Type1' THEN 1 ELSE 0 END) AS meeting_booked,
         SUM(CASE WHEN client_type='Type2' THEN 1 ELSE 0 END) AS no_meeting
       FROM Leads
     `);
-    return result.recordset[0];
+
+    // Today's & this-week's followups (latest next_followup_date per lead)
+    const fuResult = await query(`
+      WITH LatestFU AS (
+        SELECT lead_id, next_followup_date,
+               ROW_NUMBER() OVER (PARTITION BY lead_id ORDER BY created_at DESC) AS rn
+        FROM FollowUps
+        WHERE next_followup_date IS NOT NULL
+      )
+      SELECT
+        SUM(CASE WHEN CAST(next_followup_date AS DATE) = CAST(GETDATE() AS DATE) THEN 1 ELSE 0 END) AS today_followups,
+        SUM(CASE WHEN next_followup_date >= CAST(DATEADD(DAY,1-DATEPART(WEEKDAY,GETDATE()),GETDATE()) AS DATE)
+                  AND next_followup_date <  CAST(DATEADD(DAY,8-DATEPART(WEEKDAY,GETDATE()),GETDATE()) AS DATE)
+                 THEN 1 ELSE 0 END) AS week_followups
+      FROM LatestFU WHERE rn = 1
+    `);
+
+    return {
+      ...result.recordset[0],
+      today_followups: fuResult.recordset[0]?.today_followups || 0,
+      week_followups:  fuResult.recordset[0]?.week_followups  || 0,
+    };
   },
 
   async getConversionByUser() {
