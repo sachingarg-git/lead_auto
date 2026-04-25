@@ -66,7 +66,6 @@ const Lead = {
     const offset = (page - 1) * limit;
     const params = { offset, limit };
 
-    // Base join — always include followup_count + latest next_followup_date
     let fromClause = `
       FROM Leads l
       LEFT JOIN Users u ON l.assigned_to = u.id
@@ -77,7 +76,6 @@ const Lead = {
       ) fc ON fc.lead_id = l.id
     `;
 
-    // followup_date filter: join to latest followup per lead
     if (followup_date === 'today' || followup_date === 'week') {
       fromClause += `
         INNER JOIN (
@@ -105,9 +103,7 @@ const Lead = {
                  AND lf.next_followup_date <  CAST(DATEADD(DAY, 8-DATEPART(WEEKDAY, GETDATE()), GETDATE()) AS DATE)`;
     }
 
-    const countRes = await query(
-      `SELECT COUNT(*) AS total ${fromClause} ${where}`, params
-    );
+    const countRes = await query(`SELECT COUNT(*) AS total ${fromClause} ${where}`, params);
     const total = countRes.recordset[0].total;
 
     const result = await query(
@@ -126,12 +122,13 @@ const Lead = {
     const lead = await Lead.findById(id);
     if (!lead) return null;
 
+    // ── UPDATE without OUTPUT (Leads table has triggers) ───
     await query(
-      `UPDATE Leads SET status = @status WHERE id = @id`,
+      'UPDATE Leads SET status = @status WHERE id = @id',
       { status: newStatus, id }
     );
 
-    // Record history
+    // Record status history
     await query(
       `INSERT INTO LeadStatusHistory (lead_id, old_status, new_status, changed_by, note)
        VALUES (@lead_id, @old_status, @new_status, @changed_by, @note)`,
@@ -141,15 +138,61 @@ const Lead = {
     return await Lead.findById(id);
   },
 
+  /**
+   * Generic field update — no OUTPUT clause (triggers conflict).
+   * Returns the updated lead via a follow-up SELECT.
+   */
   async update(id, data) {
-    const fields = Object.keys(data)
-      .map(k => `${k} = @${k}`)
-      .join(', ');
-    const result = await query(
-      `UPDATE Leads SET ${fields} OUTPUT INSERTED.* WHERE id = @id`,
+    if (!Object.keys(data).length) return await Lead.findById(id);
+
+    const fields = Object.keys(data).map(k => `${k} = @${k}`).join(', ');
+
+    // ── No OUTPUT INSERTED.* — Leads table has DML triggers ──
+    await query(
+      `UPDATE Leads SET ${fields} WHERE id = @id`,
       { ...data, id }
     );
-    return result.recordset[0];
+
+    return await Lead.findById(id);
+  },
+
+  // ── Activity log ──────────────────────────────────────────
+
+  /**
+   * Log a change to LeadActivityLog.
+   * action_type: 'followup' | 'status_change' | 'assigned' | 'edit' | 'created'
+   */
+  async logActivity({ lead_id, action_type, field_name, old_value, new_value, note, created_by, actor_name }) {
+    await query(
+      `INSERT INTO LeadActivityLog (lead_id, action_type, field_name, old_value, new_value, note, created_by, actor_name)
+       VALUES (@lead_id, @action_type, @field_name, @old_value, @new_value, @note, @created_by, @actor_name)`,
+      {
+        lead_id,
+        action_type: action_type || 'edit',
+        field_name:  field_name  || null,
+        old_value:   old_value   != null ? String(old_value) : null,
+        new_value:   new_value   != null ? String(new_value) : null,
+        note:        note        || null,
+        created_by:  created_by  || null,
+        actor_name:  actor_name  || null,
+      }
+    );
+  },
+
+  /** Fetch all activity log entries for a lead, newest first */
+  async getActivity(lead_id) {
+    const result = await query(
+      `SELECT a.*, u.name AS actor_name_db
+       FROM LeadActivityLog a
+       LEFT JOIN Users u ON a.created_by = u.id
+       WHERE a.lead_id = @lead_id
+       ORDER BY a.created_at DESC`,
+      { lead_id }
+    );
+    return result.recordset.map(r => ({
+      ...r,
+      actor_name: r.actor_name_db || r.actor_name || 'System',
+    }));
   },
 
   async getStats() {
@@ -167,7 +210,6 @@ const Lead = {
       FROM Leads
     `);
 
-    // Today's & this-week's followups (latest next_followup_date per lead)
     const fuResult = await query(`
       WITH LatestFU AS (
         SELECT lead_id, next_followup_date,

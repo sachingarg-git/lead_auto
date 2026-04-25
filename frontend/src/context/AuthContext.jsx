@@ -19,12 +19,39 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, []);
 
+  /**
+   * Step 1: email + password login.
+   * Returns one of:
+   *   { done: true }              — logged in normally (no PIN)
+   *   { requiresPin: true, tempToken, userName } — need PIN step
+   */
   const login = useCallback(async (email, password) => {
     const res = await authApi.login(email, password);
-    localStorage.setItem('lms_token', res.data.token);
-    localStorage.setItem('lms_user', JSON.stringify(res.data.user));
-    setUser(res.data.user);
-    return res.data.user;
+    const data = res.data;
+
+    // 2FA PIN required
+    if (data.requires_pin) {
+      return { requiresPin: true, tempToken: data.temp_token, userName: data.user_name };
+    }
+
+    // Normal login
+    localStorage.setItem('lms_token', data.token);
+    localStorage.setItem('lms_user', JSON.stringify(data.user));
+    setUser(data.user);
+    return { done: true };
+  }, []);
+
+  /**
+   * Step 2: verify the Green PIN.
+   * On success, stores token and sets user session.
+   */
+  const verifyPin = useCallback(async (tempToken, pin) => {
+    const res = await authApi.verifyPin(tempToken, pin);
+    const data = res.data;
+    localStorage.setItem('lms_token', data.token);
+    localStorage.setItem('lms_user', JSON.stringify(data.user));
+    setUser(data.user);
+    return data.user;
   }, []);
 
   const logout = useCallback(() => {
@@ -33,7 +60,6 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
-  // Permission check helper
   const can = useCallback((permission) => {
     if (!user) return false;
     const perms = user.permissions || [];
@@ -43,7 +69,7 @@ export function AuthProvider({ children }) {
   const isAdmin = user?.role_name === 'Admin';
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, can, isAdmin }}>
+    <AuthContext.Provider value={{ user, loading, login, verifyPin, logout, can, isAdmin }}>
       {children}
     </AuthContext.Provider>
   );

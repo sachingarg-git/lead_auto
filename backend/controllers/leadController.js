@@ -3,8 +3,50 @@ const FollowUp = require('../models/FollowUp');
 const { query } = require('../config/database');
 const { scheduleRemindersForLead } = require('../jobs/reminderScheduler');
 const { scheduleFollowUpForLead } = require('../jobs/followUpScheduler');
-const { sendWelcomeMessages } = require('../services/communicationService');
+const { sendWelcomeMessages, sendManualEmail, sendManualWhatsApp } = require('../services/communicationService');
 const logger = require('../config/logger');
+
+// ── Field labels for readable activity log ────────────────────
+const FIELD_LABELS = {
+  assigned_to:      'Assigned To',
+  status:           'Status',
+  full_name:        'Name',
+  email:            'Email',
+  phone:            'Phone',
+  company:          'Company',
+  notes:            'Notes',
+  meeting_datetime: 'Meeting Date',
+  meeting_link:     'Meeting Link',
+  slot_date:        'Slot Date',
+  slot_time:        'Slot Time',
+  client_type:      'Client Type',
+  tags:             'Tags',
+};
+
+// ── Helper: log a generic field change ───────────────────────
+async function logChange(lead_id, field_name, old_value, new_value, user, extraNote) {
+  const label = FIELD_LABELS[field_name] || field_name;
+  await Lead.logActivity({
+    lead_id,
+    action_type: 'edit',
+    field_name:  label,
+    old_value:   old_value != null ? String(old_value) : null,
+    new_value:   new_value != null ? String(new_value) : null,
+    note:        extraNote || null,
+    created_by:  user?.id   || null,
+    actor_name:  user?.name || 'System',
+  });
+}
+
+// ── Fetch all users for name resolution ──────────────────────
+async function getUsersMap() {
+  const r = await query('SELECT id, name FROM Users');
+  const map = {};
+  r.recordset.forEach(u => { map[u.id] = u.name; });
+  return map;
+}
+
+// ─────────────────────────────────────────────────────────────
 
 async function getLeads(req, res) {
   try {
@@ -36,11 +78,18 @@ async function createLead(req, res) {
   try {
     const lead = await Lead.create({ ...req.body, source: req.body.source || 'Manual' });
 
-    // Emit to dashboard in real time
     const io = req.app.get('io');
     io.to('dashboard').emit('lead:new', lead);
 
-    // Trigger automation
+    // Log creation
+    await Lead.logActivity({
+      lead_id:     lead.id,
+      action_type: 'created',
+      note:        `Lead created via ${lead.source}`,
+      created_by:  req.user?.id   || null,
+      actor_name:  req.user?.name || 'System',
+    });
+
     await triggerLeadAutomation(lead);
 
     res.status(201).json(lead);
@@ -74,13 +123,49 @@ async function updateLeadStatus(req, res) {
 async function updateLead(req, res) {
   try {
     const id = parseInt(req.params.id);
+    const old = await Lead.findById(id);
+    if (!old) return res.status(404).json({ error: 'Lead not found' });
+
+    // Resolve assigned_to names for log
+    let usersMap = {};
+    if (req.body.assigned_to !== undefined) {
+      usersMap = await getUsersMap();
+    }
+
     const updated = await Lead.update(id, req.body);
     if (!updated) return res.status(404).json({ error: 'Lead not found' });
+
+    // ── Log every changed field ────────────────────────────
+    const actor = req.user;
+    const loggable = Object.keys(FIELD_LABELS);
+
+    for (const field of loggable) {
+      if (!(field in req.body)) continue;
+      const oldVal = old[field];
+      const newVal = req.body[field];
+      if (String(oldVal ?? '') === String(newVal ?? '')) continue; // no change
+
+      if (field === 'assigned_to') {
+        // Show names, not IDs
+        const oldName = oldVal ? (usersMap[oldVal] || `User #${oldVal}`) : 'Unassigned';
+        const newName = newVal ? (usersMap[newVal] || `User #${newVal}`) : 'Unassigned';
+        await Lead.logActivity({
+          lead_id:     id,
+          action_type: 'assigned',
+          field_name:  'Assigned To',
+          old_value:   oldName,
+          new_value:   newName,
+          created_by:  actor?.id,
+          actor_name:  actor?.name || 'System',
+        });
+      } else {
+        await logChange(id, field, oldVal, newVal, actor);
+      }
+    }
 
     const io = req.app.get('io');
     io.to('dashboard').emit('lead:updated', updated);
 
-    // Re-schedule if meeting datetime changed (Type1)
     if (req.body.meeting_datetime && updated.client_type === 'Type1') {
       await scheduleRemindersForLead(updated);
     }
@@ -89,6 +174,43 @@ async function updateLead(req, res) {
   } catch (err) {
     logger.error('updateLead error:', err);
     res.status(500).json({ error: 'Failed to update lead' });
+  }
+}
+
+// ── Quick assign from leads list ──────────────────────────────
+async function assignLead(req, res) {
+  try {
+    const id        = parseInt(req.params.id);
+    const { user_id } = req.body;
+    const old       = await Lead.findById(id);
+    if (!old) return res.status(404).json({ error: 'Lead not found' });
+
+    const usersMap  = await getUsersMap();
+    const newUserId = user_id ? parseInt(user_id) : null;
+
+    await Lead.update(id, { assigned_to: newUserId });
+
+    const oldName = old.assigned_to ? (usersMap[old.assigned_to] || `User #${old.assigned_to}`) : 'Unassigned';
+    const newName = newUserId       ? (usersMap[newUserId]        || `User #${newUserId}`)        : 'Unassigned';
+
+    await Lead.logActivity({
+      lead_id:     id,
+      action_type: 'assigned',
+      field_name:  'Assigned To',
+      old_value:   oldName,
+      new_value:   newName,
+      created_by:  req.user?.id,
+      actor_name:  req.user?.name || 'System',
+    });
+
+    const updated = await Lead.findById(id);
+    const io = req.app.get('io');
+    io.to('dashboard').emit('lead:updated', updated);
+
+    res.json(updated);
+  } catch (err) {
+    logger.error('assignLead error:', err);
+    res.status(500).json({ error: 'Failed to assign lead' });
   }
 }
 
@@ -125,17 +247,25 @@ async function addFollowUp(req, res) {
       return res.status(400).json({ error: 'Invalid or missing status' });
     }
 
-    // Update lead status
-    const lead = await Lead.updateStatus(lead_id, status, req.user.id, note);
+    const oldLead = await Lead.findById(lead_id);
+    const lead    = await Lead.updateStatus(lead_id, status, req.user.id, note);
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
-    // Record followup entry
-    const followup = await FollowUp.create({
+    const followup = await FollowUp.create({ lead_id, status, note, next_followup_date, created_by: req.user.id });
+
+    // Log followup action to activity
+    await Lead.logActivity({
       lead_id,
-      status,
-      note,
-      next_followup_date,
-      created_by: req.user.id,
+      action_type: 'followup',
+      field_name:  'Status',
+      old_value:   oldLead?.status || null,
+      new_value:   status,
+      note:        [
+        note || '',
+        next_followup_date ? `Next follow-up: ${next_followup_date}` : '',
+      ].filter(Boolean).join(' | ') || null,
+      created_by:  req.user.id,
+      actor_name:  req.user.name || req.user.email,
     });
 
     const io = req.app.get('io');
@@ -148,15 +278,87 @@ async function addFollowUp(req, res) {
   }
 }
 
+// ── Manual Send Email ────────────────────────────────────────
+async function sendEmail(req, res) {
+  try {
+    const lead = await Lead.findById(parseInt(req.params.id));
+    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+    if (!lead.email) return res.status(400).json({ error: 'Lead has no email address' });
+
+    const { template, custom_subject, custom_body } = req.body;
+    const result = await sendManualEmail(lead, {
+      template:      template || 'welcome',
+      customSubject: custom_subject,
+      customBody:    custom_body,
+    });
+
+    // Log to activity
+    await Lead.logActivity({
+      lead_id:     lead.id,
+      action_type: 'edit',
+      field_name:  'Email Sent',
+      new_value:   `${template === 'custom' ? 'Custom' : 'Welcome'} email → ${lead.email}`,
+      created_by:  req.user?.id,
+      actor_name:  req.user?.name || 'System',
+    });
+
+    res.json({ success: true, ...result });
+  } catch (err) {
+    logger.error('sendEmail error:', err);
+    res.status(500).json({ error: err.message || 'Failed to send email' });
+  }
+}
+
+// ── Manual Send WhatsApp ──────────────────────────────────────
+async function sendWhatsApp(req, res) {
+  try {
+    const lead = await Lead.findById(parseInt(req.params.id));
+    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+    if (!lead.phone && !lead.whatsapp_number) return res.status(400).json({ error: 'Lead has no phone number' });
+
+    const { template, custom_message } = req.body;
+    const result = await sendManualWhatsApp(lead, {
+      template:      template || 'welcome',
+      customMessage: custom_message,
+    });
+
+    await Lead.logActivity({
+      lead_id:     lead.id,
+      action_type: 'edit',
+      field_name:  'WhatsApp Sent',
+      new_value:   `${template === 'custom' ? 'Custom' : 'Welcome'} WA → ${lead.phone}`,
+      created_by:  req.user?.id,
+      actor_name:  req.user?.name || 'System',
+    });
+
+    res.json({ success: true, ...result });
+  } catch (err) {
+    logger.error('sendWhatsApp error:', err);
+    res.status(500).json({ error: err.message || 'Failed to send WhatsApp' });
+  }
+}
+
+// ── Full Activity Log ────────────────────────────────────────
+async function getActivity(req, res) {
+  try {
+    const lead_id = parseInt(req.params.id);
+    const activity = await Lead.getActivity(lead_id);
+    res.json(activity);
+  } catch (err) {
+    logger.error('getActivity error:', err);
+    res.status(500).json({ error: 'Failed to fetch activity' });
+  }
+}
+
 // ── Delete Lead ──────────────────────────────────────────────
 async function deleteLead(req, res) {
   try {
     const id = parseInt(req.params.id);
-    // Delete followups and history first (no FK cascade set up)
-    await query(`DELETE FROM FollowUps WHERE lead_id = @id`, { id });
-    await query(`DELETE FROM LeadStatusHistory WHERE lead_id = @id`, { id }).catch(() => {});
-    await query(`DELETE FROM Reminders WHERE lead_id = @id`, { id }).catch(() => {});
-    await query(`DELETE FROM Leads WHERE id = @id`, { id });
+    await query('DELETE FROM FollowUps WHERE lead_id = @id',         { id });
+    await query('DELETE FROM LeadStatusHistory WHERE lead_id = @id', { id }).catch(() => {});
+    await query('DELETE FROM LeadActivityLog WHERE lead_id = @id',   { id }).catch(() => {});
+    await query('DELETE FROM Reminders WHERE lead_id = @id',         { id }).catch(() => {});
+    await query('DELETE FROM Leads WHERE id = @id',                  { id });
 
     const io = req.app.get('io');
     io.to('dashboard').emit('lead:updated', { id, deleted: true });
@@ -171,10 +373,7 @@ async function deleteLead(req, res) {
 // ── Internal helper ─────────────────────────────────────────
 async function triggerLeadAutomation(lead) {
   try {
-    // 1. Send welcome/intro messages across all channels
     await sendWelcomeMessages(lead);
-
-    // 2. Schedule reminders based on client type
     if (lead.client_type === 'Type1' && lead.meeting_datetime) {
       await scheduleRemindersForLead(lead);
     } else {
@@ -182,8 +381,15 @@ async function triggerLeadAutomation(lead) {
     }
   } catch (err) {
     logger.error(`Automation trigger failed for lead ${lead.id}:`, err);
-    // Don't throw — lead was created successfully
   }
 }
 
-module.exports = { getLeads, getLead, createLead, updateLeadStatus, updateLead, getStats, getFollowUps, addFollowUp, deleteLead, triggerLeadAutomation };
+module.exports = {
+  getLeads, getLead, createLead,
+  updateLeadStatus, updateLead, assignLead,
+  getStats,
+  getFollowUps, addFollowUp,
+  getActivity,
+  sendEmail, sendWhatsApp,
+  deleteLead, triggerLeadAutomation,
+};

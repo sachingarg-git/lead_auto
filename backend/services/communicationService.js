@@ -17,12 +17,12 @@ async function logCommunication(leadId, reminderId, channel, status, providerId,
       `INSERT INTO CommunicationLogs (lead_id, reminder_id, channel, status, provider_id, message)
        VALUES (@lead_id, @reminder_id, @channel, @status, @provider_id, @message)`,
       {
-        lead_id: leadId,
+        lead_id:    leadId,
         reminder_id: reminderId || null,
         channel,
         status,
         provider_id: providerId || null,
-        message: message || null,
+        message:    message || null,
       }
     );
   } catch (err) {
@@ -32,24 +32,30 @@ async function logCommunication(leadId, reminderId, channel, status, providerId,
 
 /**
  * Send Welcome messages on lead capture (all channels in parallel).
- * Matches: IMMEDIATE step in Type2 flow, and confirmation for Type1.
+ * Auto-send runs ONCE — guarded by welcome_sent flag in DB.
  */
 async function sendWelcomeMessages(lead) {
+  // ── Build message payloads first (these are async) ──────────
+  const [emailPayload, waMessage] = await Promise.all([
+    lead.email ? buildWelcomeEmail(lead) : Promise.resolve(null),
+    (lead.whatsapp_number || lead.phone) ? buildWelcomeWA(lead) : Promise.resolve(null),
+  ]);
+
   const results = await Promise.allSettled([
     // Email
-    lead.email
-      ? sendEmail(buildWelcomeEmail(lead)).then(id => ({ channel: 'Email', id }))
+    emailPayload
+      ? sendEmail(emailPayload).then(id => ({ channel: 'Email', id }))
       : Promise.resolve(null),
 
     // WhatsApp
-    lead.whatsapp_number || lead.phone
-      ? sendWhatsApp(lead.whatsapp_number || lead.phone, buildWelcomeWA(lead))
+    waMessage && (lead.whatsapp_number || lead.phone)
+      ? sendWhatsApp(lead.whatsapp_number || lead.phone, waMessage)
           .then(id => ({ channel: 'WhatsApp', id }))
       : Promise.resolve(null),
 
     // Telegram (lead-facing, if they provided chat_id)
     lead.telegram_chat_id
-      ? sendTelegram(lead.telegram_chat_id, buildWelcomeWA(lead))
+      ? sendTelegram(lead.telegram_chat_id, waMessage || '')
           .then(id => ({ channel: 'Telegram', id }))
       : Promise.resolve(null),
 
@@ -65,22 +71,85 @@ async function sendWelcomeMessages(lead) {
     }
   }
 
-  // Mark welcome as sent
+  // Mark welcome as sent (once-only flag)
   await query('UPDATE Leads SET welcome_sent = 1, last_contacted = GETDATE() WHERE id = @id', { id: lead.id });
 }
 
 /**
+ * Manual: Send email to a specific lead.
+ * template: 'welcome' | 'custom'
+ * If custom, customSubject + customBody must be provided.
+ */
+async function sendManualEmail(lead, { template = 'welcome', customSubject, customBody } = {}) {
+  let payload;
+
+  if (template === 'welcome') {
+    payload = await buildWelcomeEmail(lead);
+  } else {
+    payload = {
+      to:      lead.email,
+      subject: customSubject || `Message from our team`,
+      html:    `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px;white-space:pre-line">${(customBody || '').replace(/\n/g, '<br>')}</div>`,
+    };
+  }
+
+  if (!payload?.to) throw new Error('Lead has no email address');
+
+  const msgId = await sendEmail(payload);
+  if (msgId) {
+    await logCommunication(lead.id, null, 'Email', 'Delivered', msgId, `Manual email — ${template}`);
+    await query(
+      'UPDATE Leads SET last_contacted = GETDATE(), contact_count = contact_count + 1 WHERE id = @id',
+      { id: lead.id }
+    );
+  }
+  return { sent: !!msgId, to: payload.to, subject: payload.subject };
+}
+
+/**
+ * Manual: Send WhatsApp to a specific lead.
+ * template: 'welcome' | 'custom'
+ */
+async function sendManualWhatsApp(lead, { template = 'welcome', customMessage } = {}) {
+  const phone = lead.whatsapp_number || lead.phone;
+  if (!phone) throw new Error('Lead has no phone number');
+
+  let message;
+  if (template === 'welcome') {
+    message = await buildWelcomeWA(lead);
+  } else {
+    message = customMessage || '';
+  }
+
+  if (!message) throw new Error('Message cannot be empty');
+
+  const result = await sendWhatsApp(phone, message);
+  if (result) {
+    await logCommunication(lead.id, null, 'WhatsApp', 'Delivered', null, `Manual WA — ${template}`);
+    await query(
+      'UPDATE Leads SET last_contacted = GETDATE(), contact_count = contact_count + 1 WHERE id = @id',
+      { id: lead.id }
+    );
+  }
+  return { sent: !!result, to: phone };
+}
+
+/**
  * Send meeting reminder (for Type1 leads).
- * reminderType: '4_days_before' | 'same_day_9am' | '30_min_before'
  */
 async function sendMeetingReminder(lead, reminderType, reminderId) {
+  const [emailPayload, waMessage] = await Promise.all([
+    lead.email ? buildMeetingReminderEmail(lead, reminderType) : null,
+    (lead.whatsapp_number || lead.phone) ? buildMeetingReminderWA(lead, reminderType) : null,
+  ]);
+
   const results = await Promise.allSettled([
-    lead.email
-      ? sendEmail(buildMeetingReminderEmail(lead, reminderType)).then(id => ({ channel: 'Email', id }))
+    emailPayload
+      ? sendEmail(emailPayload).then(id => ({ channel: 'Email', id }))
       : Promise.resolve(null),
 
-    (lead.whatsapp_number || lead.phone)
-      ? sendWhatsApp(lead.whatsapp_number || lead.phone, buildMeetingReminderWA(lead, reminderType))
+    waMessage && (lead.whatsapp_number || lead.phone)
+      ? sendWhatsApp(lead.whatsapp_number || lead.phone, waMessage)
           .then(id => ({ channel: 'WhatsApp', id }))
       : Promise.resolve(null),
 
@@ -94,17 +163,17 @@ async function sendMeetingReminder(lead, reminderType, reminderId) {
   }
 
   await query(
-    `UPDATE Leads SET last_contacted = GETDATE(), contact_count = contact_count + 1 WHERE id = @id`,
+    'UPDATE Leads SET last_contacted = GETDATE(), contact_count = contact_count + 1 WHERE id = @id',
     { id: lead.id }
   );
 }
 
 /**
  * Send follow-up message for Type2 leads.
- * dayNumber: 0 (immediate), 1, 3, 5, 7
  */
 async function sendFollowUpMessage(lead, dayNumber, reminderId) {
   const dayLabel = dayNumber === 0 ? 'Immediate' : `Day ${dayNumber}`;
+  const waMsg    = buildFollowUpWA(lead, dayLabel);
 
   const results = await Promise.allSettled([
     lead.email
@@ -112,7 +181,7 @@ async function sendFollowUpMessage(lead, dayNumber, reminderId) {
       : Promise.resolve(null),
 
     (lead.whatsapp_number || lead.phone)
-      ? sendWhatsApp(lead.whatsapp_number || lead.phone, buildFollowUpWA(lead, dayLabel))
+      ? sendWhatsApp(lead.whatsapp_number || lead.phone, waMsg)
           .then(id => ({ channel: 'WhatsApp', id }))
       : Promise.resolve(null),
   ]);
@@ -124,9 +193,12 @@ async function sendFollowUpMessage(lead, dayNumber, reminderId) {
   }
 
   await query(
-    `UPDATE Leads SET last_contacted = GETDATE(), contact_count = contact_count + 1 WHERE id = @id`,
+    'UPDATE Leads SET last_contacted = GETDATE(), contact_count = contact_count + 1 WHERE id = @id',
     { id: lead.id }
   );
 }
 
-module.exports = { sendWelcomeMessages, sendMeetingReminder, sendFollowUpMessage, logCommunication };
+module.exports = {
+  sendWelcomeMessages, sendMeetingReminder, sendFollowUpMessage, logCommunication,
+  sendManualEmail, sendManualWhatsApp,
+};

@@ -35,11 +35,12 @@ router.get('/', async (req, res) => {
         (SELECT COUNT(*) FROM Leads l WHERE l.source = s.name) AS lead_count
       FROM LeadSources s ORDER BY s.created_at DESC
     `);
-    // Parse config JSON for response
+    // Safe JSON parse — ignore corrupt DB values
+    const safeJson = (str) => { try { return str ? JSON.parse(str) : null; } catch { return null; } };
     const sources = result.recordset.map(s => ({
       ...s,
-      config: s.config ? JSON.parse(s.config) : null,
-      column_map: s.column_map ? JSON.parse(s.column_map) : null,
+      config:     safeJson(s.config),
+      column_map: safeJson(s.column_map),
     }));
     res.json(sources);
   } catch (err) {

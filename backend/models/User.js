@@ -26,6 +26,7 @@ const User = {
   async findById(id) {
     const result = await query(
       `SELECT u.id, u.name, u.email, u.role_id, u.is_active, u.avatar_url, u.last_login, u.created_at,
+              u.pin_enabled,
               r.name AS role_name, r.permissions
        FROM Users u JOIN Roles r ON u.role_id = r.id
        WHERE u.id = @id`,
@@ -37,6 +38,7 @@ const User = {
   async findAll() {
     const result = await query(
       `SELECT u.id, u.name, u.email, u.role_id, u.is_active, u.avatar_url, u.last_login, u.created_at,
+              u.pin_enabled,
               r.name AS role_name
        FROM Users u JOIN Roles r ON u.role_id = r.id
        ORDER BY u.created_at DESC`
@@ -68,6 +70,45 @@ const User = {
       { ...updates, id }
     );
     return result.recordset[0];
+  },
+
+  // ── 2FA Green PIN ──────────────────────────────────────────
+
+  /** Hash and store a new PIN, enable 2FA for user */
+  async setPin(id, plainPin) {
+    const pin_hash = await bcrypt.hash(String(plainPin), 12);
+    await query(
+      'UPDATE Users SET green_pin = @pin_hash, pin_enabled = 1 WHERE id = @id',
+      { id, pin_hash }
+    );
+  },
+
+  /** Compare plain PIN against stored hash */
+  async verifyPin(id, plainPin) {
+    const result = await query(
+      'SELECT green_pin FROM Users WHERE id = @id AND pin_enabled = 1',
+      { id }
+    );
+    const row = result.recordset[0];
+    if (!row || !row.green_pin) return false;
+    return bcrypt.compare(String(plainPin), row.green_pin);
+  },
+
+  /** Remove PIN, disable 2FA for user */
+  async removePin(id) {
+    await query(
+      'UPDATE Users SET green_pin = NULL, pin_enabled = 0 WHERE id = @id',
+      { id }
+    );
+  },
+
+  /** Reset a user's password (admin action) */
+  async resetPassword(id, newPassword) {
+    const password_hash = await bcrypt.hash(newPassword, 12);
+    await query(
+      'UPDATE Users SET password_hash = @password_hash WHERE id = @id',
+      { id, password_hash }
+    );
   },
 };
 

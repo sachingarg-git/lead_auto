@@ -41,7 +41,13 @@ export default function SettingsPage() {
 
   useEffect(() => {
     settingsApi.getAll()
-      .then(r => setForm(f => ({ ...f, ...r.data })))
+      .then(r => {
+        const data = { ...r.data };
+        // Never pre-fill password fields with masked values — force fresh entry
+        if (data.smtp_pass)      data.smtp_pass      = '';
+        if (data.interakt_api_key && data.interakt_api_key.includes('••')) data.interakt_api_key = '';
+        setForm(f => ({ ...f, ...data }));
+      })
       .catch(() => toast.error('Failed to load settings'))
       .finally(() => setLoading(false));
   }, []);

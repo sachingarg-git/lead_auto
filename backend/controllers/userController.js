@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const { query } = require('../config/database');
 const logger = require('../config/logger');
+const crypto = require('crypto');
 
 async function listUsers(req, res) {
   try {
@@ -68,4 +69,67 @@ async function listRoles(req, res) {
   }
 }
 
-module.exports = { listUsers, createUser, updateUser, toggleUserActive, listRoles };
+// ── Admin: Reset Password ─────────────────────────────────────
+async function resetPassword(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Generate a secure random password: "Wz" + 6 random chars + "!" + 2 digits
+    const rand = crypto.randomBytes(4).toString('hex').toUpperCase();
+    const digits = Math.floor(10 + Math.random() * 90);
+    const newPassword = `Wz${rand}!${digits}`;
+
+    await User.resetPassword(id, newPassword);
+    logger.info(`Password reset for user ${id} by admin ${req.user.email}`);
+
+    // Return the plain password ONCE — admin must share it with the user
+    res.json({ new_password: newPassword, message: 'Password reset successfully. Share this password with the user.' });
+  } catch (err) {
+    logger.error('resetPassword error:', err);
+    res.status(500).json({ error: 'Failed to reset password' });
+  }
+}
+
+// ── Admin: Generate Green PIN ─────────────────────────────────
+async function generatePin(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Generate 6-digit PIN
+    const pin = String(Math.floor(100000 + Math.random() * 900000));
+
+    await User.setPin(id, pin);
+    logger.info(`Green PIN generated for user ${id} by admin ${req.user.email}`);
+
+    // Return PIN once — admin shares with user
+    res.json({ pin, message: 'Green PIN set. Share this 6-digit PIN with the user. It will not be shown again.' });
+  } catch (err) {
+    logger.error('generatePin error:', err);
+    res.status(500).json({ error: 'Failed to generate PIN' });
+  }
+}
+
+// ── Admin: Remove Green PIN ───────────────────────────────────
+async function removePin(req, res) {
+  try {
+    const id = parseInt(req.params.id);
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    await User.removePin(id);
+    logger.info(`Green PIN removed for user ${id} by admin ${req.user.email}`);
+    res.json({ message: '2FA PIN removed. User can now log in with password only.' });
+  } catch (err) {
+    logger.error('removePin error:', err);
+    res.status(500).json({ error: 'Failed to remove PIN' });
+  }
+}
+
+module.exports = {
+  listUsers, createUser, updateUser, toggleUserActive, listRoles,
+  resetPassword, generatePin, removePin,
+};

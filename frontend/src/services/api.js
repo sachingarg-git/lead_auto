@@ -30,21 +30,26 @@ api.interceptors.response.use(
 
 // ── Auth ─────────────────────────────────────────────────────
 export const authApi = {
-  login: (email, password) => api.post('/auth/login', { email, password }),
-  me: () => api.get('/auth/me'),
+  login:     (email, password)   => api.post('/auth/login', { email, password }),
+  verifyPin: (temp_token, pin)   => api.post('/auth/verify-pin', { temp_token, pin }),
+  me:        ()                  => api.get('/auth/me'),
 };
 
 // ── Leads ────────────────────────────────────────────────────
 export const leadsApi = {
-  getAll: (params) => api.get('/leads', { params }),
-  getOne: (id) => api.get(`/leads/${id}`),
-  create: (data) => api.post('/leads', data),
-  update: (id, data) => api.patch(`/leads/${id}`, data),
+  getAll:       (params)         => api.get('/leads', { params }),
+  getOne:       (id)             => api.get(`/leads/${id}`),
+  create:       (data)           => api.post('/leads', data),
+  update:       (id, data)       => api.patch(`/leads/${id}`, data),
   updateStatus: (id, status, note) => api.patch(`/leads/${id}/status`, { status, note }),
-  delete: (id) => api.delete(`/leads/${id}`),
-  getStats: () => api.get('/leads/stats'),
-  getFollowUps: (id) => api.get(`/leads/${id}/followups`),
-  addFollowUp: (id, data) => api.post(`/leads/${id}/followups`, data),
+  assign:       (id, user_id)    => api.patch(`/leads/${id}/assign`, { user_id }),
+  delete:       (id)             => api.delete(`/leads/${id}`),
+  getStats:     ()               => api.get('/leads/stats'),
+  getFollowUps: (id)             => api.get(`/leads/${id}/followups`),
+  addFollowUp:  (id, data)       => api.post(`/leads/${id}/followups`, data),
+  getActivity:    (id)             => api.get(`/leads/${id}/activity`),
+  sendEmail:      (id, data)       => api.post(`/leads/${id}/send-email`, data),
+  sendWhatsApp:   (id, data)       => api.post(`/leads/${id}/send-whatsapp`, data),
 };
 
 // ── Dashboard ─────────────────────────────────────────────────
@@ -54,11 +59,14 @@ export const dashboardApi = {
 
 // ── Users ─────────────────────────────────────────────────────
 export const usersApi = {
-  getAll: () => api.get('/users'),
-  create: (data) => api.post('/users', data),
-  update: (id, data) => api.patch(`/users/${id}`, data),
-  toggle: (id) => api.patch(`/users/${id}/toggle`),
-  getRoles: () => api.get('/users/roles'),
+  getAll:         ()         => api.get('/users'),
+  create:         (data)     => api.post('/users', data),
+  update:         (id, data) => api.patch(`/users/${id}`, data),
+  toggle:         (id)       => api.patch(`/users/${id}/toggle`),
+  getRoles:       ()         => api.get('/users/roles'),
+  resetPassword:  (id)       => api.post(`/users/${id}/reset-password`),
+  generatePin:    (id)       => api.post(`/users/${id}/generate-pin`),
+  removePin:      (id)       => api.delete(`/users/${id}/pin`),
 };
 
 // ── Sources ───────────────────────────────────────────────────

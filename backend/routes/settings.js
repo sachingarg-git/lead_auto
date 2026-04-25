@@ -35,9 +35,11 @@ router.put('/', authorize('settings:write'), async (req, res) => {
     const toSave = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) {
-        // Don't overwrite password if placeholder was sent
-        if ((key === 'smtp_pass' || key === 'interakt_api_key') &&
-            req.body[key].includes('••••')) continue;
+        // Don't overwrite password if placeholder or empty (keep existing value)
+        if (key === 'smtp_pass' || key === 'interakt_api_key') {
+          const v = req.body[key];
+          if (!v || v.includes('••••')) continue; // skip blank or masked
+        }
         toSave[key] = req.body[key];
       }
     }
