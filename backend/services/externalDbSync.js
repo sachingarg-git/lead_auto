@@ -326,4 +326,59 @@ function startExternalSyncScheduler() {
   logger.info('External DB sync scheduler started (every 5 minutes)');
 }
 
-module.exports = { syncExternalSource, startExternalSyncScheduler, testConnection, invalidatePool };
+/* ── Fetch columns + one sample row from an external table ──── */
+async function fetchColumns(config) {
+  const dbType = config.db_type || 'mssql';
+  const table  = config.table;
+  if (!table) throw new Error('Table name is required');
+
+  if (dbType === 'postgres') {
+    const pool = new PgPool({
+      host: config.server, port: parseInt(config.port) || 5432,
+      database: config.database, user: config.user, password: config.password,
+      ssl: config.encrypt ? { rejectUnauthorized: false } : false,
+      connectionTimeoutMillis: 10000,
+    });
+    const client = await pool.connect().catch(async (err) => {
+      await pool.end().catch(() => {});
+      throw err;
+    });
+    try {
+      const colRes = await client.query(
+        `SELECT column_name, data_type, is_nullable
+         FROM information_schema.columns
+         WHERE table_name = $1 AND table_schema = 'public'
+         ORDER BY ordinal_position`,
+        [table]
+      );
+      if (!colRes.rows.length) throw new Error(`Table "${table}" not found or has no columns`);
+      const sampleRes = await client.query(`SELECT * FROM "${table}" ORDER BY 1 DESC LIMIT 1`);
+      return { columns: colRes.rows, sample: sampleRes.rows[0] || null, dbType: 'postgres' };
+    } finally {
+      client.release();
+      await pool.end().catch(() => {});
+    }
+  } else {
+    const pool = await sql.connect({
+      server: config.server, port: parseInt(config.port) || 1433,
+      database: config.database, user: config.user, password: config.password,
+      options: { encrypt: config.encrypt === true, trustServerCertificate: true },
+      connectionTimeout: 10000,
+    }).catch(err => { throw err; });
+    try {
+      const colRes = await pool.request().query(
+        `SELECT COLUMN_NAME AS column_name, DATA_TYPE AS data_type, IS_NULLABLE AS is_nullable
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_NAME = '${table.replace(/'/g, '')}'
+         ORDER BY ORDINAL_POSITION`
+      );
+      if (!colRes.recordset.length) throw new Error(`Table "${table}" not found or has no columns`);
+      const sampleRes = await pool.request().query(`SELECT TOP 1 * FROM [${table}] ORDER BY 1 DESC`);
+      return { columns: colRes.recordset, sample: sampleRes.recordset[0] || null, dbType: 'mssql' };
+    } finally {
+      await pool.close().catch(() => {});
+    }
+  }
+}
+
+module.exports = { syncExternalSource, startExternalSyncScheduler, testConnection, fetchColumns, invalidatePool };

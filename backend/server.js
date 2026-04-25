@@ -24,6 +24,7 @@ const dashboardRoutes = require('./routes/dashboard');
 const sourcesRoutes = require('./routes/sources');
 const captureRoutes  = require('./routes/capture');
 const settingsRoutes = require('./routes/settings');
+const meetingRoutes  = require('./routes/meetings');
 
 // Ensure log directory exists
 const logDir = path.join(__dirname, 'logs');
@@ -47,7 +48,15 @@ io.on('connection', (socket) => {
 // ── Security Middleware ───────────────────────────────────────
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: (origin, callback) => {
+    // Allow any localhost port in development, or the configured FRONTEND_URL in production
+    const allowed = process.env.FRONTEND_URL || 'http://localhost:3000';
+    if (!origin || origin === allowed || /^http:\/\/localhost:\d+$/.test(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error(`CORS: origin ${origin} not allowed`));
+    }
+  },
   credentials: true,
 }));
 
@@ -77,6 +86,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/sources',   sourcesRoutes);
 app.use('/api/capture',   captureRoutes);
 app.use('/api/settings',  settingsRoutes);
+app.use('/api/meetings',  meetingRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

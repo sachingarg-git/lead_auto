@@ -5,7 +5,7 @@ import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 
-export default function Header({ onMenuClick }) {
+export default function Header({ onMenuClick, scheduleOpen, onScheduleToggle }) {
   const location  = useLocation();
   const { user }  = useAuth();
   const { t }     = useTranslation();
@@ -92,6 +92,26 @@ export default function Header({ onMenuClick }) {
             {new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
           </span>
         </div>
+
+        {/* Schedule toggle */}
+        <button
+          onClick={onScheduleToggle}
+          title={scheduleOpen ? 'Close Schedule' : 'Open Schedule'}
+          className={`
+            relative flex items-center gap-2 px-3 py-1.5 rounded-full border
+            transition-all duration-200 font-semibold text-[11px]
+            ${scheduleOpen
+              ? 'bg-brand-500 border-brand-500 text-white shadow-md shadow-brand-500/25'
+              : 'bg-white border-slate-200 text-slate-700 hover:border-brand-300 hover:text-brand-600 hover:bg-brand-50'
+            }
+          `}
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          <span className="hidden sm:inline">Schedule</span>
+        </button>
       </div>
     </header>
   );

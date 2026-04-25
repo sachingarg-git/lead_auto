@@ -58,6 +58,49 @@ async function getFromName() {
   return process.env.COMPANY_NAME || 'Wizone LMS';
 }
 
+/* ── Date/time helpers (IST-aware, handle mssql Date objects) ─ */
+
+/**
+ * Format a slot_date value for display.
+ * Handles: JS Date from mssql DATE column, ISO string "2026-04-26", etc.
+ * Returns e.g. "Sat, 26 April 2026"
+ */
+function formatSlotDate(val) {
+  if (!val) return '';
+  try {
+    const d = val instanceof Date ? val : new Date(val);
+    if (isNaN(d)) return String(val);
+    return d.toLocaleDateString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      weekday: 'short', day: 'numeric', month: 'long', year: 'numeric',
+    });
+  } catch { return String(val); }
+}
+
+/**
+ * Format a slot_time value for display.
+ * Handles: JS Date from mssql TIME column (UTC epoch + time), HH:MM string, etc.
+ * Returns e.g. "12:00 PM"
+ */
+function formatSlotTime(val) {
+  if (!val) return '';
+  try {
+    if (val instanceof Date) {
+      // mssql TIME → Date anchored at 1970-01-01 with time stored as UTC
+      const hh = val.getUTCHours();
+      const mm = String(val.getUTCMinutes()).padStart(2, '0');
+      return `${String(hh % 12 || 12).padStart(2, '0')}:${mm} ${hh >= 12 ? 'PM' : 'AM'}`;
+    }
+    const parts = String(val).split(':');
+    if (parts.length >= 2) {
+      const hh = parseInt(parts[0]);
+      const mm = String(parseInt(parts[1])).padStart(2, '0');
+      return `${String(hh % 12 || 12).padStart(2, '0')}:${mm} ${hh >= 12 ? 'PM' : 'AM'}`;
+    }
+    return String(val);
+  } catch { return String(val); }
+}
+
 /**
  * Substitute {{variable}} placeholders in a template string.
  * Supports: {{full_name}}, {{phone}}, {{email}}, {{company}},
@@ -138,8 +181,8 @@ async function buildWelcomeEmail(lead) {
     email:        lead.email        || '',
     company:      lead.company      || '',
     company_name: companyName,
-    slot_date:    lead.slot_date ? String(lead.slot_date).substring(0, 10) : '',
-    slot_time:    lead.slot_time    || '',
+    slot_date:    formatSlotDate(lead.slot_date),
+    slot_time:    formatSlotTime(lead.slot_time),
   };
 
   if (subject && body) {
@@ -164,7 +207,7 @@ async function buildWelcomeEmail(lead) {
     html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px">
       <h2>Hi ${lead.full_name},</h2>
       <p>Thank you for reaching out to <strong>${companyName}</strong>. We will contact you shortly!</p>
-      ${lead.slot_date ? `<p>📅 Your appointment: <strong>${String(lead.slot_date).substring(0,10)}${lead.slot_time ? ' at ' + lead.slot_time : ''}</strong></p>` : ''}
+      ${lead.slot_date ? `<p>📅 Your appointment: <strong>${formatSlotDate(lead.slot_date)}${lead.slot_time ? ' at ' + formatSlotTime(lead.slot_time) : ''}</strong></p>` : ''}
       <p>Best regards,<br>${companyName} Team</p>
     </div>`,
   };
@@ -213,7 +256,40 @@ function buildFollowUpEmail(lead, dayNumber) {
   };
 }
 
+/**
+ * Send reschedule confirmation email to the lead.
+ * Called when a meeting is rescheduled (customer request or team-initiated).
+ */
+async function buildRescheduleEmail(lead, { newDate, newTime, reason, type } = {}) {
+  const companyName = await getCompanyName();
+  const typeLabel   = type === 'customer_request' ? 'your request' : 'scheduling reasons';
+  const dateStr     = newDate ? formatSlotDate(newDate instanceof Date ? newDate : new Date(newDate)) : '';
+  const timeStr     = newTime ? formatSlotTime(newTime) : '';
+  const when        = dateStr ? `${dateStr}${timeStr ? ' at ' + timeStr : ''}` : 'a new time (to be confirmed)';
+
+  return {
+    to:      lead.email,
+    subject: `📅 Meeting Rescheduled — ${companyName}`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px;background:#f9fafb;border-radius:8px">
+      <div style="background:#0891b2;padding:20px 24px;border-radius:8px 8px 0 0">
+        <h2 style="color:#fff;margin:0;font-size:20px">${companyName}</h2>
+      </div>
+      <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;color:#374151;line-height:1.7;font-size:14px">
+        <p>Hi <strong>${lead.full_name}</strong>,</p>
+        <p>Your meeting has been rescheduled due to <strong>${typeLabel}</strong>.</p>
+        <div style="background:#f0f9ff;border-left:4px solid #0891b2;padding:14px;margin:16px 0;border-radius:4px">
+          <strong>📅 New appointment: ${when}</strong>
+        </div>
+        ${reason ? `<p><em>Reason: ${reason}</em></p>` : ''}
+        <p>If you have any questions, please don't hesitate to reach out.</p>
+        <p>Best regards,<br><strong>${companyName} Team</strong></p>
+      </div>
+    </div>`,
+  };
+}
+
 module.exports = {
   sendEmail, testEmail, resetTransporter,
   buildWelcomeEmail, buildMeetingReminderEmail, buildFollowUpEmail,
+  buildRescheduleEmail, formatSlotDate, formatSlotTime,
 };

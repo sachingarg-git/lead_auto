@@ -34,6 +34,42 @@ const ICON = {
   Nurture:   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />,
 };
 
+/* ── Slot tag helper: returns label + style for today/tomorrow ─ */
+function getSlotTagInfo(lead) {
+  if (lead.client_type !== 'Type1') return null;
+  const now      = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const tom      = new Date(now); tom.setDate(now.getDate() + 1);
+  const tomKey   = `${tom.getFullYear()}-${String(tom.getMonth()+1).padStart(2,'0')}-${String(tom.getDate()).padStart(2,'0')}`;
+
+  // Prefer meeting_datetime, fall back to slot_date
+  let slotDt = null;
+  if (lead.meeting_datetime) {
+    slotDt = new Date(lead.meeting_datetime);
+  } else if (lead.slot_date) {
+    slotDt = new Date(lead.slot_date);
+  }
+  if (!slotDt || isNaN(slotDt)) return { label: '📅 Meeting', cls: 'bg-violet-50 text-violet-700 border-violet-200' };
+
+  const y  = slotDt.getFullYear();
+  const mo = String(slotDt.getMonth()+1).padStart(2,'0');
+  const d  = String(slotDt.getDate()).padStart(2,'0');
+  const dk = `${y}-${mo}-${d}`;
+
+  // Format time from meeting_datetime
+  let timeStr = '';
+  if (lead.meeting_datetime) {
+    const hh = slotDt.getHours();
+    const mm = String(slotDt.getMinutes()).padStart(2,'0');
+    const ap = hh >= 12 ? 'PM' : 'AM';
+    timeStr = ` ${hh%12||12}:${mm} ${ap}`;
+  }
+
+  if (dk === todayKey) return { label: `⏰ Today${timeStr}`,    cls: 'bg-red-50 text-red-600 border-red-200',    isToday: true };
+  if (dk === tomKey)   return { label: `📅 Tomorrow${timeStr}`, cls: 'bg-amber-50 text-amber-700 border-amber-200', isTomorrow: true };
+  return { label: '📅 Meeting', cls: 'bg-violet-50 text-violet-700 border-violet-200' };
+}
+
 const getSourceStyle = s => {
   if (!s) return 'bg-slate-100 text-slate-600 border-slate-200';
   const l = s.toLowerCase();
@@ -474,7 +510,7 @@ function LeadRow({ lead, users, onFollowUp, onDelete, onAssigned, onEmail, onWha
   return (
     <tr className="group hover:bg-slate-50/60 transition-colors">
 
-      {/* Name + followup badge */}
+      {/* Name + auto tags */}
       <td className="px-4 py-3">
         <button onClick={onFollowUp} className="flex items-center gap-2.5 text-left w-full group/link">
           <div className="relative shrink-0">
@@ -482,31 +518,38 @@ function LeadRow({ lead, users, onFollowUp, onDelete, onAssigned, onEmail, onWha
                             flex items-center justify-center text-brand-600 text-xs font-bold">
               {lead.full_name?.[0]?.toUpperCase()}
             </div>
-            {/* FollowUp count badge */}
-            {followupCount > 0 && (
-              <div className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-400
-                              flex items-center justify-center text-white text-[9px] font-black
-                              border border-white shadow-sm">
-                {followupCount > 9 ? '9+' : followupCount}
-              </div>
-            )}
           </div>
-          <div>
-            <div className="font-semibold text-slate-800 group-hover/link:text-brand-600
-                            transition-colors text-[13px] whitespace-nowrap">
-              {lead.full_name}
-            </div>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              {lead.client_type === 'Type1' && (
-                <span className="text-[9px] font-bold text-violet-500 uppercase tracking-wide">
-                  📅 Meeting Booked
+          <div className="min-w-0">
+            {/* ── Auto color-coded tags ABOVE the name ── */}
+            <div className="flex flex-wrap items-center gap-1 mb-0.5">
+              {(() => {
+                const tag = getSlotTagInfo(lead);
+                return tag ? (
+                  <span className={`inline-flex items-center gap-0.5 text-[9px] font-bold
+                                   px-1.5 py-0.5 rounded-full border leading-none ${tag.cls}`}>
+                    {tag.label}
+                  </span>
+                ) : null;
+              })()}
+              {parseInt(lead.reschedule_count) > 0 && (
+                <span className="inline-flex items-center gap-0.5 text-[9px] font-bold
+                                 px-1.5 py-0.5 rounded-full border leading-none
+                                 bg-amber-50 text-amber-700 border-amber-200">
+                  🔄 {lead.reschedule_count}×
                 </span>
               )}
               {followupCount > 0 && (
-                <span className="text-[9px] text-amber-500 font-semibold">
-                  {followupCount} follow-up{followupCount > 1 ? 's' : ''}
+                <span className="inline-flex items-center gap-0.5 text-[9px] font-bold
+                                 px-1.5 py-0.5 rounded-full border leading-none
+                                 bg-sky-50 text-sky-700 border-sky-200">
+                  💬 {followupCount}
                 </span>
               )}
+            </div>
+            {/* Name */}
+            <div className="font-semibold text-slate-800 group-hover/link:text-brand-600
+                            transition-colors text-[13px] truncate max-w-[140px]">
+              {lead.full_name}
             </div>
           </div>
         </button>
@@ -1032,18 +1075,39 @@ function PagBtn({ onClick, disabled, label }) {
 }
 
 /* ── Slot Cell ───────────────────────────────────────────────── */
+/**
+ * Format MSSQL TIME column safely.
+ * MSSQL TIME → JSON-serialized as "1970-01-01T{HH}:{MM}:{SS}.000Z".
+ * Naive split(':')[0] gives "1970-01-01T18" → parseInt = 1970 (WRONG).
+ * Fix: use getUTCHours() / getUTCMinutes() to avoid IST shift.
+ */
+function formatSlotTime(val) {
+  if (!val) return '';
+  try {
+    const d = new Date(val);
+    if (!isNaN(d)) {
+      // MSSQL TIME comes in as 1970-01-01T{HH}:{MM}:ssZ — use UTC methods
+      const hh = d.getUTCHours();
+      const mm = String(d.getUTCMinutes()).padStart(2, '0');
+      return `${hh % 12 || 12}:${mm} ${hh >= 12 ? 'PM' : 'AM'}`;
+    }
+  } catch {}
+  // Fallback: plain "HH:MM:SS" string (not a Date object)
+  const parts = String(val).split(':');
+  const hh = parseInt(parts[0], 10);
+  if (isNaN(hh)) return '';
+  const mm = String(parseInt(parts[1] || '0')).padStart(2, '0');
+  return `${hh % 12 || 12}:${mm} ${hh >= 12 ? 'PM' : 'AM'}`;
+}
+
 function SlotCell({ slotDate, slotTime, preferred, meetingDatetime }) {
   if (slotDate) {
+    // slotDate arrives as "2026-04-25T00:00:00.000Z" — substring(0,10) is safe
     const dateStr = String(slotDate).substring(0, 10);
     const [y, m, d] = dateStr.split('-');
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     const display = `${d} ${months[parseInt(m,10)-1]} ${y}`;
-    let timeDisplay = '';
-    if (slotTime) {
-      const parts = String(slotTime).split(':');
-      const hh = parseInt(parts[0], 10);
-      timeDisplay = `${hh % 12 || 12}:${parts[1]} ${hh >= 12 ? 'PM' : 'AM'}`;
-    }
+    const timeDisplay = formatSlotTime(slotTime);
     return (
       <div>
         <div className="text-[11px] font-bold text-violet-700">{display}</div>

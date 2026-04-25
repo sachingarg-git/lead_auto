@@ -1,15 +1,16 @@
 /**
  * Lead Sources Management
- * Supports 2 source types:
+ * Supports 3 source types:
  *   - meta         : Facebook/Instagram Lead Ads webhook
  *   - landing_page : Public API key based POST endpoint (centralized table)
+ *   - external_db  : Poll an external PostgreSQL/MSSQL table every 5 minutes
  */
 const router = require('express').Router();
 const { v4: uuidv4 } = require('uuid');
 const { query } = require('../config/database');
 const { authenticate } = require('../middleware/auth');
 const { adminOnly } = require('../middleware/rbac');
-const { syncExternalSource, testConnection, invalidatePool } = require('../services/externalDbSync');
+const { syncExternalSource, testConnection, fetchColumns, invalidatePool } = require('../services/externalDbSync');
 const logger = require('../config/logger');
 
 // ── Public (auth-only) — just names, for filter dropdowns ────
@@ -58,9 +59,9 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'name and source_type required' });
     }
 
-    const validTypes = ['meta', 'landing_page'];
+    const validTypes = ['meta', 'landing_page', 'external_db'];
     if (!validTypes.includes(source_type)) {
-      return res.status(400).json({ error: 'source_type must be: meta | landing_page' });
+      return res.status(400).json({ error: 'source_type must be: meta | landing_page | external_db' });
     }
 
     // Generate API key for landing_page sources
@@ -114,6 +115,23 @@ router.get('/:id', async (req, res) => {
 router.patch('/:id', async (req, res) => {
   try {
     const { name, config, column_map, is_active } = req.body;
+
+    // For external_db: if the new config omits the password (user didn't re-enter it),
+    // fetch the stored password and merge it in — never lose credentials silently
+    let finalConfig = config;
+    if (config && !config.password) {
+      const existing = await query(
+        'SELECT config FROM LeadSources WHERE id = @id',
+        { id: parseInt(req.params.id) }
+      );
+      const storedCfg = existing.recordset[0]?.config
+        ? JSON.parse(existing.recordset[0].config)
+        : {};
+      if (storedCfg.password) {
+        finalConfig = { ...config, password: storedCfg.password };
+      }
+    }
+
     await query(
       `UPDATE LeadSources SET
          name = ISNULL(@name, name),
@@ -124,7 +142,7 @@ router.patch('/:id', async (req, res) => {
       {
         id: parseInt(req.params.id),
         name: name || null,
-        config: config ? JSON.stringify(config) : null,
+        config: finalConfig ? JSON.stringify(finalConfig) : null,
         column_map: column_map ? JSON.stringify(column_map) : null,
         is_active: is_active !== undefined ? (is_active ? 1 : 0) : null,
       }
@@ -135,6 +153,34 @@ router.patch('/:id', async (req, res) => {
   } catch (err) {
     logger.error('update source error:', err);
     res.status(500).json({ error: 'Failed to update source' });
+  }
+});
+
+// ── Fetch columns from an external DB (no saved source needed) ─
+router.post('/fetch-columns', async (req, res) => {
+  try {
+    let { config } = req.body;
+    if (!config) return res.status(400).json({ error: 'config object required' });
+
+    // When editing an existing source the frontend sends password='__keep__'
+    // Resolve it to the actual stored password so the connection works
+    if (config.password === '__keep__' && config.source_id) {
+      const srcResult = await query(
+        'SELECT config FROM LeadSources WHERE id = @id',
+        { id: parseInt(config.source_id) }
+      );
+      const stored = srcResult.recordset[0];
+      if (stored?.config) {
+        const storedCfg = JSON.parse(stored.config);
+        config = { ...config, password: storedCfg.password || '' };
+      }
+    }
+
+    const result = await fetchColumns(config);
+    res.json(result);
+  } catch (err) {
+    logger.error('fetch-columns error:', err.message);
+    res.status(400).json({ error: err.message });
   }
 });
 

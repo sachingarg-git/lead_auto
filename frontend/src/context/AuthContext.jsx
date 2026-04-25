@@ -9,13 +9,26 @@ export function AuthProvider({ children }) {
   });
   const [loading, setLoading] = useState(true);
 
-  // Verify token on mount
+  // Verify token on mount.
+  // We snapshot the token value at call time so we can detect whether the user
+  // has already logged in with a NEW token before this async check finishes.
   useEffect(() => {
-    const token = localStorage.getItem('lms_token');
-    if (!token) { setLoading(false); return; }
+    const tokenAtMount = localStorage.getItem('lms_token');
+    if (!tokenAtMount) { setUser(null); setLoading(false); return; }
+
     authApi.me()
       .then(res => setUser(res.data))
-      .catch(() => { localStorage.removeItem('lms_token'); localStorage.removeItem('lms_user'); })
+      .catch(() => {
+        // Only clear the session if the token in storage hasn't been replaced
+        // by a fresh login while this background check was running.
+        if (localStorage.getItem('lms_token') === tokenAtMount) {
+          localStorage.removeItem('lms_token');
+          localStorage.removeItem('lms_user');
+          setUser(null);
+        }
+        // If token changed (user already logged in fresh) → do nothing; the new
+        // session is valid and we must not wipe it.
+      })
       .finally(() => setLoading(false));
   }, []);
 

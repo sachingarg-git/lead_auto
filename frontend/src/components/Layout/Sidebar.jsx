@@ -36,7 +36,7 @@ const SettingsIcon = () => (
   </svg>
 );
 
-export default function Sidebar({ isOpen, onClose }) {
+export default function Sidebar({ isOpen, onClose, desktopHidden = false }) {
   const { user, isAdmin, logout } = useAuth();
   const { t } = useTranslation();
 
@@ -54,7 +54,12 @@ export default function Sidebar({ isOpen, onClose }) {
     <aside className={clsx(
       'fixed inset-y-0 left-0 z-30 flex flex-col w-64',
       'bg-white border-r border-slate-200/80',
-      'transition-transform duration-300 lg:relative lg:translate-x-0',
+      'transition-all duration-300 lg:relative',
+      // Desktop: hide (slide left + zero-width) when schedule panel is open
+      desktopHidden
+        ? 'lg:-translate-x-full lg:w-0 lg:overflow-hidden lg:opacity-0'
+        : 'lg:translate-x-0 lg:w-64 lg:opacity-100',
+      // Mobile: controlled by isOpen
       isOpen ? 'translate-x-0' : '-translate-x-full'
     )}
       style={{ boxShadow: '2px 0 12px rgba(0,0,0,.04)' }}>

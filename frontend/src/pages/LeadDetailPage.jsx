@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { leadsApi, remindersApi, usersApi } from '../services/api';
+import { leadsApi, remindersApi, usersApi, meetingsApi } from '../services/api';
 import StatusBadge from '../components/shared/StatusBadge';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -10,38 +10,81 @@ import { useAuth } from '../context/AuthContext';
 const STATUSES = ['New', 'FollowUp', 'DemoGiven', 'Converted', 'Lost', 'Nurture'];
 
 const STATUS_BTN = {
-  New:       { active: 'bg-sky-50 text-sky-700 border-sky-300',     hover: 'hover:bg-sky-50 hover:text-sky-600' },
+  New:       { active: 'bg-sky-50 text-sky-700 border-sky-300',       hover: 'hover:bg-sky-50 hover:text-sky-600' },
   FollowUp:  { active: 'bg-amber-50 text-amber-700 border-amber-300', hover: 'hover:bg-amber-50 hover:text-amber-700' },
   DemoGiven: { active: 'bg-violet-50 text-violet-700 border-violet-300', hover: 'hover:bg-violet-50 hover:text-violet-600' },
   Converted: { active: 'bg-green-50 text-green-700 border-green-300',  hover: 'hover:bg-green-50 hover:text-green-700' },
-  Lost:      { active: 'bg-red-50 text-red-700 border-red-300',      hover: 'hover:bg-red-50 hover:text-red-600' },
-  Nurture:   { active: 'bg-pink-50 text-pink-700 border-pink-300',   hover: 'hover:bg-pink-50 hover:text-pink-600' },
+  Lost:      { active: 'bg-red-50 text-red-700 border-red-300',        hover: 'hover:bg-red-50 hover:text-red-600' },
+  Nurture:   { active: 'bg-pink-50 text-pink-700 border-pink-300',     hover: 'hover:bg-pink-50 hover:text-pink-600' },
 };
 
-export default function LeadDetailPage() {
-  const { id } = useParams();
-  const { can } = useAuth();
-  const { t } = useTranslation();
-  const [lead,      setLead]      = useState(null);
-  const [reminders, setReminders] = useState([]);
-  const [users,     setUsers]     = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [saving,    setSaving]    = useState(false);
-  const [editNotes, setEditNotes] = useState(false);
-  const [notes,     setNotes]     = useState('');
+const MTG_STATUS_CFG = {
+  upcoming:    { label: 'Upcoming',    cls: 'bg-sky-50 text-sky-700 border-sky-200',        icon: '🗓️' },
+  started:     { label: 'In Progress', cls: 'bg-green-50 text-green-700 border-green-200',  icon: '▶️' },
+  completed:   { label: 'Completed',   cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: '✅' },
+  missed:      { label: 'Missed',      cls: 'bg-red-50 text-red-700 border-red-200',         icon: '❌' },
+  rescheduled: { label: 'Rescheduled', cls: 'bg-amber-50 text-amber-700 border-amber-200',   icon: '🔄' },
+};
 
-  useEffect(() => {
-    Promise.all([
-      leadsApi.getOne(id),
-      remindersApi.getForLead(id),
-      usersApi.getAll(),
-    ]).then(([leadRes, remindersRes, usersRes]) => {
+const REMINDER_TYPE_CFG = {
+  day_1:             { label: 'Day 1 Follow-up',      icon: '📧', color: 'text-sky-600' },
+  day_3:             { label: 'Day 3 Follow-up',      icon: '📧', color: 'text-sky-600' },
+  day_5:             { label: 'Day 5 Follow-up',      icon: '📧', color: 'text-sky-600' },
+  day_7:             { label: 'Day 7 — Last Reminder',icon: '📧', color: 'text-red-500' },
+  '4_days_before':   { label: '4 Days Before Meeting',icon: '🔔', color: 'text-violet-600' },
+  same_day_9am:      { label: 'Meeting Day Reminder', icon: '⏰', color: 'text-amber-600' },
+  '30_min_before':   { label: '30 Min Before Meeting',icon: '⚡', color: 'text-orange-500' },
+  immediate:         { label: 'Welcome / Immediate',  icon: '👋', color: 'text-brand-600' },
+};
+
+const RESCHEDULE_TYPE_LABELS = {
+  customer_request: 'Customer Request',
+  no_show:          'No-show',
+  team_request:     'Team / Internal',
+};
+
+function fmtDate(val) {
+  if (!val) return null;
+  try { return format(new Date(val), 'PPpp'); } catch { return String(val); }
+}
+
+export default function LeadDetailPage() {
+  const { id }   = useParams();
+  const { can }  = useAuth();
+  const { t }    = useTranslation();
+
+  const [lead,       setLead]       = useState(null);
+  const [reminders,  setReminders]  = useState([]);
+  const [reschedules,setReschedules]= useState([]);
+  const [users,      setUsers]      = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [saving,     setSaving]     = useState(false);
+  const [editNotes,  setEditNotes]  = useState(false);
+  const [notes,      setNotes]      = useState('');
+
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [leadRes, remRes, usersRes] = await Promise.all([
+        leadsApi.getOne(id),
+        remindersApi.getForLead(id),
+        usersApi.getAll(),
+      ]);
       setLead(leadRes.data);
       setNotes(leadRes.data.notes || '');
-      setReminders(remindersRes.data);
+      setReminders(remRes.data);
       setUsers(usersRes.data);
-    }).catch(() => {}).finally(() => setLoading(false));
+
+      // Load reschedule history silently
+      try {
+        const rRes = await meetingsApi.getReschedules(id);
+        setReschedules(rRes.data);
+      } catch {}
+    } catch {}
+    finally { setLoading(false); }
   }, [id]);
+
+  useEffect(() => { loadAll(); }, [loadAll]);
 
   async function handleStatusChange(newStatus) {
     try {
@@ -69,11 +112,23 @@ export default function LeadDetailPage() {
   }
 
   async function handleMeetingBooked(datetime) {
+    if (!datetime) return;
+    // 1-hour gap check
+    try {
+      const chk = await meetingsApi.checkSlot({ datetime, exclude_lead_id: id });
+      if (!chk.data.available) {
+        const c = chk.data.conflict[0];
+        toast.error(`Slot conflict with ${c.full_name}. Another meeting is within 1 hour.`);
+        return;
+      }
+    } catch {}
+
     try {
       const res = await leadsApi.update(id, {
-        client_type: 'Type1',
+        client_type:      'Type1',
         meeting_datetime: datetime,
-        status: 'FollowUp',
+        meeting_status:   'upcoming',
+        status:           'FollowUp',
       });
       setLead(res.data);
       toast.success('Meeting booked! Reminders scheduled automatically.');
@@ -88,6 +143,8 @@ export default function LeadDetailPage() {
   if (!lead) return (
     <div className="text-center text-slate-600 py-20">Lead not found</div>
   );
+
+  const mtgCfg = MTG_STATUS_CFG[lead.meeting_status] || MTG_STATUS_CFG.upcoming;
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -131,6 +188,13 @@ export default function LeadDetailPage() {
                       {t('leadDetail.source')}: {lead.source}
                     </span>
                   )}
+                  {/* Reschedule badge */}
+                  {lead.reschedule_count > 0 && (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold
+                                     border bg-amber-50 text-amber-700 border-amber-200">
+                      🔄 {lead.reschedule_count}× rescheduled
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -141,8 +205,8 @@ export default function LeadDetailPage() {
                 { label: 'Phone',        value: lead.phone },
                 { label: 'WhatsApp',     value: lead.whatsapp_number },
                 { label: 'Campaign',     value: lead.campaign_name },
-                { label: 'Created',      value: lead.created_at       ? format(new Date(lead.created_at),       'PPpp') : null },
-                { label: 'Last Contact', value: lead.last_contacted   ? format(new Date(lead.last_contacted),   'PPpp') : null },
+                { label: 'Created',      value: fmtDate(lead.created_at) },
+                { label: 'Last Contact', value: fmtDate(lead.last_contacted) },
               ].map(({ label, value }) => (
                 <div key={label}>
                   <div className="text-xs text-slate-600 mb-1 font-medium">{label}</div>
@@ -151,6 +215,71 @@ export default function LeadDetailPage() {
               ))}
             </div>
           </div>
+
+          {/* ── Meeting Card (Type1) ──────────────────────── */}
+          {lead.client_type === 'Type1' && lead.meeting_datetime && (
+            <div className={`rounded-2xl border p-5 ${
+              lead.meeting_status === 'completed' ? 'bg-emerald-50 border-emerald-200'
+              : lead.meeting_status === 'missed'  ? 'bg-red-50 border-red-200'
+              : lead.meeting_status === 'started' ? 'bg-green-50 border-green-200 animate-pulse-slow'
+              : 'bg-violet-50 border-violet-200'
+            }`}>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold text-violet-700 flex items-center gap-1.5">
+                  {mtgCfg.icon} {t('leadDetail.meetingScheduled')}
+                </h3>
+                <span className={`text-xs font-bold px-2 py-1 rounded-full border ${mtgCfg.cls}`}>
+                  {mtgCfg.label}
+                </span>
+              </div>
+
+              <p className="text-slate-800 text-sm font-medium">
+                {format(new Date(lead.meeting_datetime), 'EEEE, MMMM d yyyy — HH:mm')}
+              </p>
+              {lead.meeting_link && (
+                <a href={lead.meeting_link} target="_blank" rel="noopener noreferrer"
+                  className="text-brand-500 text-xs hover:underline mt-1 block">
+                  {lead.meeting_link}
+                </a>
+              )}
+
+              {/* Meeting times */}
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                {lead.meeting_started_at && (
+                  <div className="bg-white/60 rounded-lg px-2 py-1.5">
+                    <div className="text-slate-500 font-medium">Started</div>
+                    <div className="text-slate-800 font-semibold">{fmtDate(lead.meeting_started_at)}</div>
+                    {lead.meeting_delay_minutes !== null && lead.meeting_delay_minutes > 0 && (
+                      <div className="text-orange-500 font-medium">{lead.meeting_delay_minutes} min late</div>
+                    )}
+                    {lead.meeting_delay_minutes === 0 && (
+                      <div className="text-emerald-600 font-medium">On time ✓</div>
+                    )}
+                  </div>
+                )}
+                {lead.meeting_ended_at && (
+                  <div className="bg-white/60 rounded-lg px-2 py-1.5">
+                    <div className="text-slate-500 font-medium">Ended</div>
+                    <div className="text-slate-800 font-semibold">{fmtDate(lead.meeting_ended_at)}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Book Meeting (Type2) ──────────────────────── */}
+          {lead.client_type === 'Type2' && can('leads:write') && (
+            <div className="bg-white rounded-2xl border border-violet-200 p-5"
+                 style={{ boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
+              <h3 className="text-sm font-semibold text-violet-700 mb-2">{t('leadDetail.bookMeeting')}</h3>
+              <p className="text-xs text-slate-700 mb-3">{t('leadDetail.bookMeetingDesc')}</p>
+              <input
+                type="datetime-local"
+                className="input text-sm"
+                onChange={e => e.target.value && handleMeetingBooked(e.target.value)}
+              />
+            </div>
+          )}
 
           {/* Notes */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5"
@@ -184,67 +313,97 @@ export default function LeadDetailPage() {
             )}
           </div>
 
-          {/* Meeting Booking (if Type2) */}
-          {lead.client_type === 'Type2' && can('leads:write') && (
-            <div className="bg-white rounded-2xl border border-violet-200 p-5"
-                 style={{ boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
-              <h3 className="text-sm font-semibold text-violet-700 mb-2">{t('leadDetail.bookMeeting')}</h3>
-              <p className="text-xs text-slate-700 mb-3">{t('leadDetail.bookMeetingDesc')}</p>
-              <input
-                type="datetime-local"
-                className="input text-sm"
-                onChange={e => e.target.value && handleMeetingBooked(e.target.value)}
-              />
-            </div>
-          )}
-
-          {lead.client_type === 'Type1' && lead.meeting_datetime && (
-            <div className="bg-violet-50 rounded-2xl border border-violet-200 p-5">
-              <h3 className="text-sm font-semibold text-violet-700 mb-1">{t('leadDetail.meetingScheduled')}</h3>
-              <p className="text-slate-800 text-sm font-medium">
-                {format(new Date(lead.meeting_datetime), 'EEEE, MMMM d yyyy — HH:mm')}
-              </p>
-              {lead.meeting_link && (
-                <a href={lead.meeting_link} target="_blank" rel="noopener noreferrer"
-                  className="text-brand-500 text-xs hover:underline mt-1 block">
-                  {lead.meeting_link}
-                </a>
-              )}
-            </div>
-          )}
-
-          {/* Reminders timeline */}
+          {/* ── Automation Timeline ───────────────────────── */}
           <div className="bg-white rounded-2xl border border-slate-200 p-5"
                style={{ boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
             <h3 className="text-sm font-semibold text-slate-700 mb-4">{t('leadDetail.automationTimeline')}</h3>
             <div className="space-y-2">
-              {reminders.length ? reminders.map(r => (
-                <div key={r.id} className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
-                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                    r.status === 'Sent'    ? 'bg-green-400' :
-                    r.status === 'Failed'  ? 'bg-red-400' :
-                    r.status === 'Skipped' ? 'bg-slate-400' : 'bg-yellow-400'
-                  }`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm text-slate-700">
-                      {t(`reminders.${r.reminder_type}`, { defaultValue: r.reminder_type.replace(/_/g, ' ') })}
+              {reminders.length ? reminders.map(r => {
+                const cfg = REMINDER_TYPE_CFG[r.reminder_type] || {
+                  label: r.reminder_type.replace(/_/g, ' '),
+                  icon: '📌', color: 'text-slate-600',
+                };
+                return (
+                  <div key={r.id}
+                    className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
+                      r.status === 'Sent'    ? 'bg-emerald-50 border-emerald-100'
+                      : r.status === 'Failed'  ? 'bg-red-50 border-red-100'
+                      : r.status === 'Skipped' ? 'bg-slate-50 border-slate-100 opacity-60'
+                      : 'bg-white border-slate-100'
+                    }`}>
+                    <span className="text-base shrink-0">{cfg.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className={`text-sm font-semibold ${cfg.color}`}>{cfg.label}</div>
+                      <div className="text-xs text-slate-500">{fmtDate(r.scheduled_at)}</div>
+                      {r.channel && (
+                        <div className="text-[10px] text-slate-400 mt-0.5">
+                          via {r.channel}
+                        </div>
+                      )}
                     </div>
-                    <div className="text-xs text-slate-600">{format(new Date(r.scheduled_at), 'PPpp')}</div>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border shrink-0 ${
+                      r.status === 'Sent'    ? 'bg-green-50 text-green-700 border-green-200'
+                      : r.status === 'Failed'  ? 'bg-red-50 text-red-700 border-red-200'
+                      : r.status === 'Skipped' ? 'bg-slate-100 text-slate-500 border-slate-200'
+                      : 'bg-amber-50 text-amber-700 border-amber-200'
+                    }`}>
+                      {r.status}
+                    </span>
                   </div>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${
-                    r.status === 'Sent'    ? 'bg-green-50 text-green-700 border-green-200' :
-                    r.status === 'Failed'  ? 'bg-red-50 text-red-700 border-red-200' :
-                    r.status === 'Skipped' ? 'bg-slate-100 text-slate-700 border-slate-200' :
-                    'bg-yellow-50 text-yellow-700 border-yellow-200'
-                  }`}>
-                    {t(`reminderStatus.${r.status}`, { defaultValue: r.status })}
-                  </span>
-                </div>
-              )) : (
+                );
+              }) : (
                 <p className="text-sm text-slate-600 text-center py-6">{t('leadDetail.noAutomation')}</p>
               )}
             </div>
           </div>
+
+          {/* ── Reschedule History ────────────────────────── */}
+          {reschedules.length > 0 && (
+            <div className="bg-white rounded-2xl border border-amber-200 p-5"
+                 style={{ boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
+              <h3 className="text-sm font-semibold text-amber-700 mb-4 flex items-center gap-2">
+                🔄 Reschedule History
+                <span className="text-[11px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">
+                  {reschedules.length} time{reschedules.length > 1 ? 's' : ''}
+                </span>
+              </h3>
+              <div className="space-y-3">
+                {reschedules.map((r, i) => {
+                  const oldFmt = r.old_meeting_datetime
+                    ? fmtDate(r.old_meeting_datetime)
+                    : r.old_slot_date
+                      ? String(r.old_slot_date).substring(0, 10)
+                      : '—';
+                  const newFmt = r.new_meeting_datetime
+                    ? fmtDate(r.new_meeting_datetime)
+                    : r.new_slot_date
+                      ? String(r.new_slot_date).substring(0, 10)
+                      : '—';
+
+                  return (
+                    <div key={r.id}
+                      className="relative pl-5 pb-3 border-b border-slate-100 last:border-0 last:pb-0">
+                      <span className="absolute left-0 top-1.5 w-3 h-3 rounded-full bg-amber-400 border-2 border-white ring-1 ring-amber-300" />
+                      <div className="text-xs font-bold text-slate-700">
+                        #{reschedules.length - i} — {RESCHEDULE_TYPE_LABELS[r.reschedule_type] || r.reschedule_type}
+                      </div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        <span className="line-through text-red-400">{oldFmt}</span>
+                        <span className="mx-1 text-slate-400">→</span>
+                        <span className="text-emerald-600 font-medium">{newFmt}</span>
+                      </div>
+                      {r.reschedule_reason && (
+                        <div className="text-[11px] text-slate-600 mt-0.5 italic">"{r.reschedule_reason}"</div>
+                      )}
+                      <div className="text-[10px] text-slate-400 mt-0.5">
+                        by {r.rescheduled_by_name} · {fmtDate(r.created_at)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── Sidebar ────────────────────────────────────────── */}
@@ -289,6 +448,46 @@ export default function LeadDetailPage() {
                 <option value="">{t('leadDetail.unassigned')}</option>
                 {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
+            </div>
+          )}
+
+          {/* Meeting stats (reschedule count, on-time record) */}
+          {lead.client_type === 'Type1' && (
+            <div className="bg-white rounded-2xl border border-slate-200 p-4"
+                 style={{ boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
+                Meeting Stats
+              </h3>
+              <div className="space-y-2.5 text-sm">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600">Rescheduled</span>
+                  <span className={`font-bold ${lead.reschedule_count > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                    {lead.reschedule_count || 0}×
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600">Meeting Status</span>
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
+                    (MTG_STATUS_CFG[lead.meeting_status] || MTG_STATUS_CFG.upcoming).cls
+                  }`}>
+                    {(MTG_STATUS_CFG[lead.meeting_status] || MTG_STATUS_CFG.upcoming).icon}{' '}
+                    {(MTG_STATUS_CFG[lead.meeting_status] || MTG_STATUS_CFG.upcoming).label}
+                  </span>
+                </div>
+                {lead.meeting_delay_minutes !== null && lead.meeting_delay_minutes !== undefined && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-600">Delay</span>
+                    <span className={`font-semibold ${
+                      lead.meeting_delay_minutes === 0 ? 'text-emerald-600'
+                      : lead.meeting_delay_minutes > 15 ? 'text-red-500' : 'text-orange-500'
+                    }`}>
+                      {lead.meeting_delay_minutes === 0
+                        ? 'On time ✓'
+                        : `${lead.meeting_delay_minutes} min late`}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

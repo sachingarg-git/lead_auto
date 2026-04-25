@@ -18,12 +18,23 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('lms_token');
-      localStorage.removeItem('lms_user');
-      window.location.href = '/login';
+      const url = error.config?.url || '';
+      // Don't redirect for /auth/me — AuthContext handles that check itself.
+      // Redirecting here creates a race condition when the user logs in while
+      // an old session-verification call is still in-flight.
+      if (!url.includes('/auth/me')) {
+        localStorage.removeItem('lms_token');
+        localStorage.removeItem('lms_user');
+        window.location.href = '/login';
+        return Promise.reject(error); // stop processing — page is reloading
+      }
     }
     const message = error.response?.data?.error || 'Something went wrong';
-    toast.error(message);
+    // Don't show a toast for silent background auth checks
+    const url = error.config?.url || '';
+    if (!url.includes('/auth/me')) {
+      toast.error(message);
+    }
     return Promise.reject(error);
   }
 );
@@ -54,7 +65,8 @@ export const leadsApi = {
 
 // ── Dashboard ─────────────────────────────────────────────────
 export const dashboardApi = {
-  getSummary: () => api.get('/dashboard/summary'),
+  getSummary:  () => api.get('/dashboard/summary'),
+  getSchedule: () => api.get('/dashboard/schedule'),
 };
 
 // ── Users ─────────────────────────────────────────────────────
@@ -71,12 +83,14 @@ export const usersApi = {
 
 // ── Sources ───────────────────────────────────────────────────
 export const sourcesApi = {
-  getAll: () => api.get('/sources'),
-  create: (data) => api.post('/sources', data),
-  update: (id, data) => api.patch(`/sources/${id}`, data),
-  delete: (id) => api.delete(`/sources/${id}`),
-  sync: (id) => api.post(`/sources/${id}/sync`),
-  regenerateKey: (id) => api.post(`/sources/${id}/regenerate-key`),
+  getAll:        ()         => api.get('/sources'),
+  create:        (data)     => api.post('/sources', data),
+  update:        (id, data) => api.patch(`/sources/${id}`, data),
+  delete:        (id)       => api.delete(`/sources/${id}`),
+  sync:          (id)       => api.post(`/sources/${id}/sync`),
+  test:          (id)       => api.post(`/sources/${id}/test`),
+  regenerateKey: (id)       => api.post(`/sources/${id}/regenerate-key`),
+  fetchColumns:  (config)   => api.post('/sources/fetch-columns', { config }),
 };
 
 // ── Settings ──────────────────────────────────────────────────
@@ -90,6 +104,15 @@ export const settingsApi = {
 export const remindersApi = {
   getForLead: (leadId) => api.get(`/reminders/lead/${leadId}`),
   getUpcoming: () => api.get('/reminders/upcoming'),
+};
+
+// ── Meetings ───────────────────────────────────────────────────
+export const meetingsApi = {
+  start:          (id)       => api.post(`/meetings/${id}/start`),
+  end:            (id, data) => api.post(`/meetings/${id}/end`, data),
+  reschedule:     (id, data) => api.post(`/meetings/${id}/reschedule`, data),
+  getReschedules: (id)       => api.get(`/meetings/${id}/reschedules`),
+  checkSlot:      (params)   => api.get('/meetings/slots/check', { params }),
 };
 
 export default api;
