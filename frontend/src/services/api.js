@@ -17,21 +17,24 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    const url = error.config?.url || '';
+
     if (error.response?.status === 401) {
-      const url = error.config?.url || '';
-      // Don't redirect for /auth/me — AuthContext handles that check itself.
-      // Redirecting here creates a race condition when the user logs in while
-      // an old session-verification call is still in-flight.
-      if (!url.includes('/auth/me')) {
+      // Don't redirect for:
+      //  • /auth/me       — AuthContext handles session expiry itself
+      //  • /auth/verify-pin — LoginPage handles the PIN-step error in-place;
+      //                       redirecting here wipes tempToken state and loops the user
+      const skipRedirect = url.includes('/auth/me') || url.includes('/auth/verify-pin');
+      if (!skipRedirect) {
         localStorage.removeItem('lms_token');
         localStorage.removeItem('lms_user');
         window.location.href = '/login';
         return Promise.reject(error); // stop processing — page is reloading
       }
     }
+
     const message = error.response?.data?.error || 'Something went wrong';
     // Don't show a toast for silent background auth checks
-    const url = error.config?.url || '';
     if (!url.includes('/auth/me')) {
       toast.error(message);
     }

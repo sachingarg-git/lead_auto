@@ -12,7 +12,7 @@ function generateToken(userId) {
 /** Generate short-lived temp token while waiting for PIN */
 function generateTempToken(userId) {
   return jwt.sign({ userId, pinPending: true }, process.env.JWT_SECRET, {
-    expiresIn: '5m', // 5 minutes to enter PIN
+    expiresIn: '15m', // 15 minutes to enter PIN (extended from 5m)
   });
 }
 

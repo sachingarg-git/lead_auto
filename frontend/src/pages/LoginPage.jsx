@@ -20,6 +20,27 @@ export default function LoginPage() {
   const [userName,  setUserName]  = useState('');
   const [loading,   setLoading]   = useState(false);
   const [showPass,  setShowPass]  = useState(false);
+  const [pinExpiry, setPinExpiry] = useState(null); // timestamp when temp token expires
+
+  // Countdown: update every second while on PIN step
+  const [pinSecsLeft, setPinSecsLeft] = useState(null);
+  useEffect(() => {
+    if (step !== 'pin' || !pinExpiry) { setPinSecsLeft(null); return; }
+    const tick = () => {
+      const secs = Math.max(0, Math.round((pinExpiry - Date.now()) / 1000));
+      setPinSecsLeft(secs);
+      if (secs === 0) {
+        // Session expired — push back to credentials
+        setStep('credentials');
+        setPin('');
+        setTempToken('');
+        toast.error('Session expired. Please sign in again.');
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [step, pinExpiry]);
 
   if (user) return <Navigate to="/dashboard" replace />;
 
@@ -33,6 +54,7 @@ export default function LoginPage() {
       if (result.requiresPin) {
         setTempToken(result.tempToken);
         setUserName(result.userName);
+        setPinExpiry(Date.now() + 15 * 60 * 1000); // 15 min window
         setStep('pin');
         toast.success(`Welcome, ${result.userName}! Enter your Green PIN.`);
       } else {
@@ -53,8 +75,20 @@ export default function LoginPage() {
     try {
       await verifyPin(tempToken, pin);
       toast.success('Verified! Welcome back 🔐');
-    } catch {
-      // handled by interceptor
+    } catch (err) {
+      // Interceptor already shows the toast error message.
+      // Additionally: if the session expired (temp_token invalid/expired),
+      // bring the user back to credentials so they can get a fresh token.
+      const msg = err?.response?.data?.error || '';
+      if (msg.toLowerCase().includes('session') || msg.toLowerCase().includes('expired')) {
+        setStep('credentials');
+        setPin('');
+        setTempToken('');
+        // toast was already shown by the interceptor — no duplicate needed
+      } else {
+        // Wrong PIN — just clear the field so they can retry without losing the session
+        setPin('');
+      }
     } finally {
       setLoading(false);
     }
@@ -291,6 +325,29 @@ export default function LoginPage() {
                 <p style={{ color:'rgba(255,255,255,0.5)', fontSize:13, marginTop:6 }}>
                   Hi <strong style={{ color:'#4ade80' }}>{userName}</strong>! Enter your 6-digit Green PIN to continue.
                 </p>
+                {/* Session countdown */}
+                {pinSecsLeft !== null && (
+                  <div style={{
+                    display:'inline-flex', alignItems:'center', gap:6,
+                    marginTop:8, padding:'4px 12px', borderRadius:20,
+                    background: pinSecsLeft < 60
+                      ? 'rgba(239,68,68,0.15)'
+                      : 'rgba(34,197,94,0.12)',
+                    border: `1px solid ${pinSecsLeft < 60 ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.25)'}`,
+                  }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                         stroke={pinSecsLeft < 60 ? '#f87171' : '#4ade80'} strokeWidth="2">
+                      <circle cx="12" cy="12" r="10"/>
+                      <path strokeLinecap="round" d="M12 6v6l4 2"/>
+                    </svg>
+                    <span style={{
+                      fontSize:11, fontWeight:700, fontFamily:'monospace',
+                      color: pinSecsLeft < 60 ? '#f87171' : '#4ade80',
+                    }}>
+                      {Math.floor(pinSecsLeft / 60)}:{String(pinSecsLeft % 60).padStart(2,'0')} remaining
+                    </span>
+                  </div>
+                )}
               </div>
 
               <form onSubmit={handlePin} className="space-y-5">

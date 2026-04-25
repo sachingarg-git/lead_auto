@@ -73,6 +73,8 @@ function getSlotTagInfo(lead) {
 const getSourceStyle = s => {
   if (!s) return 'bg-slate-100 text-slate-600 border-slate-200';
   const l = s.toLowerCase();
+  if (l.includes('wizone'))
+    return 'bg-slate-800 text-cyan-300 border-cyan-700';           // dark — wizone.ai brand
   if (l.includes('meta') || l.includes('facebook') || l.includes('instagram'))
     return 'bg-blue-50 text-blue-600 border-blue-200';
   if (l.includes('landing') || l.includes('form') || l.includes('page'))

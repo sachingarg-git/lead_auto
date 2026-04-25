@@ -106,10 +106,45 @@ app.use((err, req, res, next) => {
 // ── Startup ───────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 
+/** Ensure 2FA columns exist — safe to run on every startup */
+async function runStartupMigrations(pool) {
+  try {
+    // green_pin — bcrypt hash of the user's PIN
+    await pool.request().query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME='Users' AND COLUMN_NAME='green_pin'
+      )
+      ALTER TABLE Users ADD green_pin NVARCHAR(100) NULL
+    `);
+    // pin_enabled — 1 means 2FA is active for this account
+    await pool.request().query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME='Users' AND COLUMN_NAME='pin_enabled'
+      )
+      ALTER TABLE Users ADD pin_enabled BIT NOT NULL DEFAULT 0
+    `);
+    // avatar_url — optional profile picture
+    await pool.request().query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME='Users' AND COLUMN_NAME='avatar_url'
+      )
+      ALTER TABLE Users ADD avatar_url NVARCHAR(500) NULL
+    `);
+    logger.info('Startup migrations: Users 2FA columns verified');
+  } catch (err) {
+    logger.warn('Startup migration warning (non-fatal):', err.message);
+  }
+}
+
 async function start() {
   try {
-    await getPool();
+    const pool = await getPool();
     logger.info('Database connected');
+
+    await runStartupMigrations(pool);
 
     startReminderWorker();
     startFollowUpWorker();
