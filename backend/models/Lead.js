@@ -45,7 +45,12 @@ const Lead = {
 
   async findById(id) {
     const result = await query(
-      `SELECT l.*, u.name AS assigned_to_name, u.email AS assigned_to_email
+      `SELECT l.*,
+              TO_CHAR(l.slot_date, 'YYYY-MM-DD')                                        AS slot_date,
+              TO_CHAR(l.slot_time, 'HH24:MI')                                           AS slot_time,
+              TO_CHAR(l.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS') AS created_at,
+              u.name  AS assigned_to_name,
+              u.email AS assigned_to_email
        FROM "Leads" l
        LEFT JOIN "Users" u ON l.assigned_to = u.id
        WHERE l.id = @id`,
@@ -107,7 +112,11 @@ const Lead = {
     const total = parseInt(countRes.recordset[0].total, 10);
 
     const result = await query(
-      `SELECT l.*, u.name AS assigned_to_name,
+      `SELECT l.*,
+              TO_CHAR(l.slot_date, 'YYYY-MM-DD')                                        AS slot_date,
+              TO_CHAR(l.slot_time, 'HH24:MI')                                           AS slot_time,
+              TO_CHAR(l.created_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD"T"HH24:MI:SS') AS created_at,
+              u.name AS assigned_to_name,
               COALESCE(fc.followup_count, 0) AS followup_count
        ${fromClause}
        ${where}

@@ -615,13 +615,13 @@ function LeadRow({ lead, users, onFollowUp, onDelete, onAssigned, onEmail, onWha
         </span>
       </td>
 
-      {/* Date */}
+      {/* Date — created_at returned as IST string "YYYY-MM-DDTHH:MI:SS" (no Z) */}
       <td className="px-4 py-3 whitespace-nowrap">
         <div className="text-[12px] font-semibold text-slate-600">
-          {format(new Date(lead.created_at), 'dd MMM')}
+          {lead.created_at ? format(new Date(lead.created_at), 'dd MMM') : '—'}
         </div>
         <div className="text-[10px] text-slate-400">
-          {format(new Date(lead.created_at), 'HH:mm')}
+          {lead.created_at ? lead.created_at.substring(11, 16) : ''}
         </div>
       </td>
 
@@ -1078,27 +1078,16 @@ function PagBtn({ onClick, disabled, label }) {
 
 /* ── Slot Cell ───────────────────────────────────────────────── */
 /**
- * Format MSSQL TIME column safely.
- * MSSQL TIME → JSON-serialized as "1970-01-01T{HH}:{MM}:{SS}.000Z".
- * Naive split(':')[0] gives "1970-01-01T18" → parseInt = 1970 (WRONG).
- * Fix: use getUTCHours() / getUTCMinutes() to avoid IST shift.
+ * Format slot time — backend now returns plain "HH:MM" string (IST, no timezone shift).
+ * e.g. "10:00" → "10:00 AM" | "14:00" → "2:00 PM"
  */
 function formatSlotTime(val) {
   if (!val) return '';
-  try {
-    const d = new Date(val);
-    if (!isNaN(d)) {
-      // MSSQL TIME comes in as 1970-01-01T{HH}:{MM}:ssZ — use UTC methods
-      const hh = d.getUTCHours();
-      const mm = String(d.getUTCMinutes()).padStart(2, '0');
-      return `${hh % 12 || 12}:${mm} ${hh >= 12 ? 'PM' : 'AM'}`;
-    }
-  } catch {}
-  // Fallback: plain "HH:MM:SS" string (not a Date object)
+  // Handle "HH:MM" or "HH:MM:SS" string from backend
   const parts = String(val).split(':');
   const hh = parseInt(parts[0], 10);
   if (isNaN(hh)) return '';
-  const mm = String(parseInt(parts[1] || '0')).padStart(2, '0');
+  const mm = String(parseInt(parts[1] || '0', 10)).padStart(2, '0');
   return `${hh % 12 || 12}:${mm} ${hh >= 12 ? 'PM' : 'AM'}`;
 }
 

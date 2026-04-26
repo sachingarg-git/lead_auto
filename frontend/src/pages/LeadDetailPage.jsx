@@ -45,7 +45,11 @@ const RESCHEDULE_TYPE_LABELS = {
 
 function fmtDate(val) {
   if (!val) return null;
-  try { return format(new Date(val), 'PPpp'); } catch { return String(val); }
+  // Backend returns IST as "YYYY-MM-DDTHH:MI:SS" (no Z) — parse directly to avoid UTC shift
+  try {
+    const d = new Date(val);
+    return isNaN(d) ? String(val) : format(d, 'dd MMM yyyy, hh:mm a');
+  } catch { return String(val); }
 }
 
 export default function LeadDetailPage() {
