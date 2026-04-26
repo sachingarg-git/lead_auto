@@ -25,6 +25,7 @@ const sourcesRoutes = require('./routes/sources');
 const captureRoutes  = require('./routes/capture');
 const settingsRoutes = require('./routes/settings');
 const meetingRoutes  = require('./routes/meetings');
+const internalRoutes = require('./routes/internal');
 
 // Ensure log directory exists
 const logDir = path.join(__dirname, 'logs');
@@ -87,6 +88,7 @@ app.use('/api/sources',   sourcesRoutes);
 app.use('/api/capture',   captureRoutes);
 app.use('/api/settings',  settingsRoutes);
 app.use('/api/meetings',  meetingRoutes);
+app.use('/api/internal', internalRoutes);  // landing-page → LMS automation bridge
 
 // Health check
 app.get('/api/health', (req, res) => {
