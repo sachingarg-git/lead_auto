@@ -2,13 +2,13 @@ const bcrypt = require('bcryptjs');
 const { query } = require('../config/database');
 
 const User = {
-  async create({ name, email, password, role_id, created_by }) {
+  async create({ name, email, password, role_id }) {
     const password_hash = await bcrypt.hash(password, 12);
     const result = await query(
-      `INSERT INTO Users (name, email, password_hash, role_id, created_by)
-       OUTPUT INSERTED.id, INSERTED.name, INSERTED.email, INSERTED.role_id, INSERTED.is_active, INSERTED.created_at
-       VALUES (@name, @email, @password_hash, @role_id, @created_by)`,
-      { name, email, password_hash, role_id, created_by: created_by || null }
+      `INSERT INTO "Users" (name, email, password_hash, role_id)
+       VALUES (@name, @email, @password_hash, @role_id)
+       RETURNING id, name, email, role_id, is_active, created_at`,
+      { name, email, password_hash, role_id }
     );
     return result.recordset[0];
   },
@@ -16,7 +16,7 @@ const User = {
   async findByEmail(email) {
     const result = await query(
       `SELECT u.*, r.name AS role_name, r.permissions
-       FROM Users u JOIN Roles r ON u.role_id = r.id
+       FROM "Users" u JOIN "Roles" r ON u.role_id = r.id
        WHERE u.email = @email`,
       { email }
     );
@@ -28,7 +28,7 @@ const User = {
       `SELECT u.id, u.name, u.email, u.role_id, u.is_active, u.avatar_url, u.last_login, u.created_at,
               u.pin_enabled,
               r.name AS role_name, r.permissions
-       FROM Users u JOIN Roles r ON u.role_id = r.id
+       FROM "Users" u JOIN "Roles" r ON u.role_id = r.id
        WHERE u.id = @id`,
       { id }
     );
@@ -40,14 +40,14 @@ const User = {
       `SELECT u.id, u.name, u.email, u.role_id, u.is_active, u.avatar_url, u.last_login, u.created_at,
               u.pin_enabled,
               r.name AS role_name
-       FROM Users u JOIN Roles r ON u.role_id = r.id
+       FROM "Users" u JOIN "Roles" r ON u.role_id = r.id
        ORDER BY u.created_at DESC`
     );
     return result.recordset;
   },
 
   async updateLastLogin(id) {
-    await query('UPDATE Users SET last_login = GETDATE() WHERE id = @id', { id });
+    await query('UPDATE "Users" SET last_login = NOW() WHERE id = @id', { id });
   },
 
   async verifyPassword(plainText, hash) {
@@ -55,7 +55,7 @@ const User = {
   },
 
   async setActive(id, is_active) {
-    await query('UPDATE Users SET is_active = @is_active WHERE id = @id', { id, is_active });
+    await query('UPDATE "Users" SET is_active = @is_active WHERE id = @id', { id, is_active });
   },
 
   async update(id, data) {
@@ -66,7 +66,7 @@ const User = {
     if (!Object.keys(updates).length) return null;
     const fields = Object.keys(updates).map(k => `${k} = @${k}`).join(', ');
     const result = await query(
-      `UPDATE Users SET ${fields} OUTPUT INSERTED.id, INSERTED.name, INSERTED.email, INSERTED.role_id, INSERTED.is_active WHERE id = @id`,
+      `UPDATE "Users" SET ${fields} WHERE id = @id RETURNING id, name, email, role_id, is_active`,
       { ...updates, id }
     );
     return result.recordset[0];
@@ -78,7 +78,7 @@ const User = {
   async setPin(id, plainPin) {
     const pin_hash = await bcrypt.hash(String(plainPin), 12);
     await query(
-      'UPDATE Users SET green_pin = @pin_hash, pin_enabled = 1 WHERE id = @id',
+      'UPDATE "Users" SET green_pin = @pin_hash, pin_enabled = true WHERE id = @id',
       { id, pin_hash }
     );
   },
@@ -86,7 +86,7 @@ const User = {
   /** Compare plain PIN against stored hash */
   async verifyPin(id, plainPin) {
     const result = await query(
-      'SELECT green_pin FROM Users WHERE id = @id AND pin_enabled = 1',
+      'SELECT green_pin FROM "Users" WHERE id = @id AND pin_enabled = true',
       { id }
     );
     const row = result.recordset[0];
@@ -97,7 +97,7 @@ const User = {
   /** Remove PIN, disable 2FA for user */
   async removePin(id) {
     await query(
-      'UPDATE Users SET green_pin = NULL, pin_enabled = 0 WHERE id = @id',
+      'UPDATE "Users" SET green_pin = NULL, pin_enabled = false WHERE id = @id',
       { id }
     );
   },
@@ -106,7 +106,7 @@ const User = {
   async resetPassword(id, newPassword) {
     const password_hash = await bcrypt.hash(newPassword, 12);
     await query(
-      'UPDATE Users SET password_hash = @password_hash WHERE id = @id',
+      'UPDATE "Users" SET password_hash = @password_hash WHERE id = @id',
       { id, password_hash }
     );
   },

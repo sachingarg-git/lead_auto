@@ -1,55 +1,73 @@
-const sql = require('mssql');
-const logger = require('./logger');
+/**
+ * PostgreSQL connection pool (migrated from MSSQL).
+ * Provides the same query(sql, params) API as before —
+ * auto-converts @paramName placeholders to $1, $2, ...
+ * so all model files work without changes to param style.
+ */
+const { Pool } = require('pg');
+const logger   = require('./logger');
 
-const dbConfig = {
-  server: process.env.DB_SERVER || 'localhost',
-  port: parseInt(process.env.DB_PORT) || 1433,
-  database: process.env.DB_DATABASE || 'lead_management',
-  user: process.env.DB_USER || 'sa',
-  password: process.env.DB_PASSWORD,
-  options: {
-    encrypt: process.env.DB_ENCRYPT === 'true',
-    trustServerCertificate: process.env.DB_TRUST_SERVER_CERT !== 'false',
-    enableArithAbort: true,
-  },
-  pool: {
-    max: 20,
-    min: 2,
-    idleTimeoutMillis: 30000,
-  },
-  connectionTimeout: 30000,
-  requestTimeout: 30000,
-};
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
+  max: 20,
+  idleTimeoutMillis:       30000,
+  connectionTimeoutMillis: 30000,
+});
 
-let pool = null;
+pool.on('error', (err) => {
+  logger.error('PostgreSQL pool error:', err.message);
+});
 
-async function getPool() {
-  if (pool && pool.connected) return pool;
+/**
+ * Convert MSSQL-style @paramName placeholders to PostgreSQL $N positional params.
+ * Handles repeated params — same @name always maps to the same $N.
+ */
+function convertParams(sqlText, params = {}) {
+  const paramMap = {};
+  const values   = [];
+
+  const text = sqlText.replace(/@(\w+)/g, (_, name) => {
+    if (!(name in params)) return `@${name}`;           // leave unknown refs as-is
+    if (!(name in paramMap)) {
+      values.push(params[name] ?? null);
+      paramMap[name] = values.length;
+    }
+    return `$${paramMap[name]}`;
+  });
+
+  return { text, values };
+}
+
+/**
+ * Main query function — drop-in replacement for the mssql version.
+ * Returns { recordset: rows[] } to keep all callers unchanged.
+ */
+async function query(sqlText, params = {}) {
+  const { text, values } = convertParams(sqlText, params);
   try {
-    pool = await sql.connect(dbConfig);
-    logger.info('MSSQL connection pool established');
-    return pool;
+    const result = await pool.query(text, values);
+    return { recordset: result.rows };
   } catch (err) {
-    logger.error('MSSQL connection failed:', err.message);
+    logger.error('DB query error:', err.message);
+    logger.error('SQL:', text);
     throw err;
   }
 }
 
-async function query(queryString, params = {}) {
-  const p = await getPool();
-  const request = p.request();
-  for (const [key, value] of Object.entries(params)) {
-    request.input(key, value);
-  }
-  return request.query(queryString);
+/** Return the pool (used by server.js startup check) */
+async function getPool() {
+  const client = await pool.connect();
+  client.release();
+  return pool;
 }
 
 async function closePool() {
-  if (pool) {
-    await pool.close();
-    pool = null;
-    logger.info('MSSQL pool closed');
-  }
+  await pool.end();
+  logger.info('PostgreSQL pool closed');
 }
 
-module.exports = { sql, getPool, query, closePool };
+// Export sql as empty object for backward compat (was mssql type helper)
+const sql = {};
+
+module.exports = { query, getPool, closePool, sql };

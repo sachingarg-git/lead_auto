@@ -220,7 +220,7 @@ router.post('/:id/reschedule', async (req, res) => {
 
     // Increment reschedule_count
     await query(
-      'UPDATE Leads SET reschedule_count = ISNULL(reschedule_count,0) + 1 WHERE id = @id',
+      'UPDATE "Leads" SET reschedule_count = COALESCE(reschedule_count,0) + 1 WHERE id = @id',
       { id }
     );
 

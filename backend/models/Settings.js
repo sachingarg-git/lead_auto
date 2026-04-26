@@ -3,21 +3,21 @@ const { query } = require('../config/database');
 const Settings = {
   /** Return all settings as a plain key→value object */
   async getAll() {
-    const result = await query('SELECT key_name, val FROM AppSettings');
+    const result = await query('SELECT key_name, val FROM "AppSettings"');
     return result.recordset.reduce((acc, r) => {
       acc[r.key_name] = r.val;
       return acc;
     }, {});
   },
 
-  /** Save multiple settings at once (upsert) */
+  /** Save multiple settings at once (upsert via ON CONFLICT) */
   async setMany(map) {
     for (const [key, val] of Object.entries(map)) {
       await query(
-        `IF EXISTS (SELECT 1 FROM AppSettings WHERE key_name = @k)
-           UPDATE AppSettings SET val = @v, updated_at = GETDATE() WHERE key_name = @k
-         ELSE
-           INSERT INTO AppSettings (key_name, val) VALUES (@k, @v)`,
+        `INSERT INTO "AppSettings" (key_name, val, updated_at)
+         VALUES (@k, @v, NOW())
+         ON CONFLICT (key_name) DO UPDATE
+           SET val = EXCLUDED.val, updated_at = NOW()`,
         { k: key, v: val !== undefined && val !== null ? String(val) : null }
       );
     }
@@ -26,7 +26,7 @@ const Settings = {
   /** Get a single value (returns null if missing) */
   async get(key) {
     const result = await query(
-      'SELECT val FROM AppSettings WHERE key_name = @k',
+      'SELECT val FROM "AppSettings" WHERE key_name = @k',
       { k: key }
     );
     return result.recordset[0]?.val ?? null;

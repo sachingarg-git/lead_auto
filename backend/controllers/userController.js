@@ -61,7 +61,7 @@ async function toggleUserActive(req, res) {
 
 async function listRoles(req, res) {
   try {
-    const result = await query('SELECT id, name FROM Roles ORDER BY id');
+    const result = await query('SELECT id, name FROM "Roles" ORDER BY id');
     res.json(result.recordset);
   } catch (err) {
     logger.error('listRoles error:', err);

@@ -3,9 +3,9 @@ const { query } = require('../config/database');
 const FollowUp = {
   async create({ lead_id, status, note, next_followup_date, created_by }) {
     const result = await query(
-      `INSERT INTO FollowUps (lead_id, status, note, next_followup_date, created_by)
-       OUTPUT INSERTED.*
-       VALUES (@lead_id, @status, @note, @next_followup_date, @created_by)`,
+      `INSERT INTO "FollowUps" (lead_id, status, note, next_followup_date, created_by)
+       VALUES (@lead_id, @status, @note, @next_followup_date, @created_by)
+       RETURNING *`,
       {
         lead_id,
         status,
@@ -20,8 +20,8 @@ const FollowUp = {
   async findByLeadId(lead_id) {
     const result = await query(
       `SELECT f.*, u.name AS created_by_name
-       FROM FollowUps f
-       LEFT JOIN Users u ON f.created_by = u.id
+       FROM "FollowUps" f
+       LEFT JOIN "Users" u ON f.created_by = u.id
        WHERE f.lead_id = @lead_id
        ORDER BY f.created_at DESC`,
       { lead_id }

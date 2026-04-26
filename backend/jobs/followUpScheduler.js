@@ -27,7 +27,7 @@ async function scheduleFollowUpForLead(lead) {
     if (fireAt <= now) continue;
 
     await query(
-      `INSERT INTO Reminders (lead_id, reminder_type, scheduled_at, status, channel)
+      `INSERT INTO "Reminders" (lead_id, reminder_type, scheduled_at, status, channel)
        VALUES (@lead_id, @reminder_type, @scheduled_at, 'Pending', 'All')`,
       { lead_id: lead.id, reminder_type: key, scheduled_at: new Date(fireAt) }
     );

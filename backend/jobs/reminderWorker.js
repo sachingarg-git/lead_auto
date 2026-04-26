@@ -22,9 +22,9 @@ function startReminderWorker() {
     try {
       const result = await query(`
         SELECT r.id, r.lead_id, r.reminder_type, r.retry_count
-        FROM Reminders r
+        FROM "Reminders" r
         WHERE r.status = 'Pending'
-          AND r.scheduled_at <= GETDATE()
+          AND r.scheduled_at <= NOW()
         ORDER BY r.scheduled_at ASC
       `);
 
@@ -46,7 +46,7 @@ function startReminderWorker() {
 async function processReminder({ id, lead_id, reminder_type, retry_count }) {
   // Mark as processing immediately to prevent double-fire
   await query(
-    `UPDATE Reminders SET status = 'Processing' WHERE id = @id AND status = 'Pending'`,
+    `UPDATE "Reminders" SET status = 'Processing' WHERE id = @id AND status = 'Pending'`,
     { id }
   );
 
@@ -74,7 +74,7 @@ async function processReminder({ id, lead_id, reminder_type, retry_count }) {
 
       // After day_7 with no conversion → move to Nurture
       if (reminder_type === 'day_7' && lead.status === 'New') {
-        await query(`UPDATE Leads SET status = 'Nurture' WHERE id = @id`, { id: lead_id });
+        await query(`UPDATE "Leads" SET status = 'Nurture' WHERE id = @id`, { id: lead_id });
         logger.info(`Lead ${lead_id} moved to Nurture campaign`);
       }
     }
@@ -91,8 +91,8 @@ async function processReminder({ id, lead_id, reminder_type, retry_count }) {
     } else {
       // Retry in 5 minutes
       await query(
-        `UPDATE Reminders SET status = 'Pending',
-           scheduled_at = DATEADD(MINUTE, 5, GETDATE()),
+        `UPDATE "Reminders" SET status = 'Pending',
+           scheduled_at = NOW() + INTERVAL '5 minutes',
            retry_count = @retries,
            error_log = @error
          WHERE id = @id`,
@@ -104,7 +104,9 @@ async function processReminder({ id, lead_id, reminder_type, retry_count }) {
 
 async function setStatus(id, status, errorLog, retryCount) {
   await query(
-    `UPDATE Reminders SET status = @status, sent_at = @sent_at, error_log = @error, retry_count = ISNULL(@retries, retry_count) WHERE id = @id`,
+    `UPDATE "Reminders" SET status = @status, sent_at = @sent_at, error_log = @error,
+       retry_count = COALESCE(@retries, retry_count)
+     WHERE id = @id`,
     {
       id,
       status,

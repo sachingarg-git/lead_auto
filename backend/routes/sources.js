@@ -14,11 +14,10 @@ const { syncExternalSource, testConnection, fetchColumns, invalidatePool } = req
 const logger = require('../config/logger');
 
 // ── Public (auth-only) — just names, for filter dropdowns ────
-//    Placed BEFORE adminOnly so Sales/Support can also use it
 router.get('/names', authenticate, async (req, res) => {
   try {
     const result = await query(
-      `SELECT id, name, source_type FROM LeadSources WHERE is_active = 1 ORDER BY name ASC`
+      `SELECT id, name, source_type FROM "LeadSources" WHERE is_active = true ORDER BY name ASC`
     );
     res.json(result.recordset);
   } catch (err) {
@@ -33,10 +32,9 @@ router.get('/', async (req, res) => {
   try {
     const result = await query(`
       SELECT s.*,
-        (SELECT COUNT(*) FROM Leads l WHERE l.source = s.name) AS lead_count
-      FROM LeadSources s ORDER BY s.created_at DESC
+        (SELECT COUNT(*) FROM "Leads" l WHERE l.source = s.name) AS lead_count
+      FROM "LeadSources" s ORDER BY s.created_at DESC
     `);
-    // Safe JSON parse — ignore corrupt DB values
     const safeJson = (str) => { try { return str ? JSON.parse(str) : null; } catch { return null; } };
     const sources = result.recordset.map(s => ({
       ...s,
@@ -64,13 +62,12 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'source_type must be: meta | landing_page | external_db' });
     }
 
-    // Generate API key for landing_page sources
     const api_key = source_type === 'landing_page' ? `wz_${uuidv4().replace(/-/g, '')}` : null;
 
     const result = await query(
-      `INSERT INTO LeadSources (name, source_type, api_key, config, column_map)
-       OUTPUT INSERTED.*
-       VALUES (@name, @source_type, @api_key, @config, @column_map)`,
+      `INSERT INTO "LeadSources" (name, source_type, api_key, config, column_map)
+       VALUES (@name, @source_type, @api_key, @config, @column_map)
+       RETURNING *`,
       {
         name,
         source_type,
@@ -83,7 +80,7 @@ router.post('/', async (req, res) => {
     const source = result.recordset[0];
     res.status(201).json({
       ...source,
-      config: source.config ? JSON.parse(source.config) : null,
+      config:     source.config     ? JSON.parse(source.config)     : null,
       column_map: source.column_map ? JSON.parse(source.column_map) : null,
     });
   } catch (err) {
@@ -96,7 +93,7 @@ router.post('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const result = await query(
-      'SELECT * FROM LeadSources WHERE id = @id',
+      'SELECT * FROM "LeadSources" WHERE id = @id',
       { id: parseInt(req.params.id) }
     );
     if (!result.recordset[0]) return res.status(404).json({ error: 'Source not found' });
@@ -116,12 +113,11 @@ router.patch('/:id', async (req, res) => {
   try {
     const { name, config, column_map, is_active } = req.body;
 
-    // For external_db: if the new config omits the password (user didn't re-enter it),
-    // fetch the stored password and merge it in — never lose credentials silently
+    // Keep stored password if user didn't re-enter it
     let finalConfig = config;
     if (config && !config.password) {
       const existing = await query(
-        'SELECT config FROM LeadSources WHERE id = @id',
+        'SELECT config FROM "LeadSources" WHERE id = @id',
         { id: parseInt(req.params.id) }
       );
       const storedCfg = existing.recordset[0]?.config
@@ -133,21 +129,20 @@ router.patch('/:id', async (req, res) => {
     }
 
     await query(
-      `UPDATE LeadSources SET
-         name = ISNULL(@name, name),
-         config = ISNULL(@config, config),
-         column_map = ISNULL(@column_map, column_map),
-         is_active = ISNULL(@is_active, is_active)
+      `UPDATE "LeadSources" SET
+         name       = COALESCE(@name, name),
+         config     = COALESCE(@config, config),
+         column_map = COALESCE(@column_map, column_map),
+         is_active  = COALESCE(@is_active, is_active)
        WHERE id = @id`,
       {
-        id: parseInt(req.params.id),
-        name: name || null,
-        config: finalConfig ? JSON.stringify(finalConfig) : null,
-        column_map: column_map ? JSON.stringify(column_map) : null,
-        is_active: is_active !== undefined ? (is_active ? 1 : 0) : null,
+        id:         parseInt(req.params.id),
+        name:       name       || null,
+        config:     finalConfig ? JSON.stringify(finalConfig) : null,
+        column_map: column_map  ? JSON.stringify(column_map)  : null,
+        is_active:  is_active !== undefined ? Boolean(is_active) : null,
       }
     );
-    // Invalidate cached DB pool so next sync reconnects with new config
     invalidatePool(parseInt(req.params.id));
     res.json({ message: 'Source updated' });
   } catch (err) {
@@ -156,17 +151,15 @@ router.patch('/:id', async (req, res) => {
   }
 });
 
-// ── Fetch columns from an external DB (no saved source needed) ─
+// ── Fetch columns from an external DB ────────────────────────
 router.post('/fetch-columns', async (req, res) => {
   try {
     let { config } = req.body;
     if (!config) return res.status(400).json({ error: 'config object required' });
 
-    // When editing an existing source the frontend sends password='__keep__'
-    // Resolve it to the actual stored password so the connection works
     if (config.password === '__keep__' && config.source_id) {
       const srcResult = await query(
-        'SELECT config FROM LeadSources WHERE id = @id',
+        'SELECT config FROM "LeadSources" WHERE id = @id',
         { id: parseInt(config.source_id) }
       );
       const stored = srcResult.recordset[0];
@@ -188,7 +181,7 @@ router.post('/fetch-columns', async (req, res) => {
 router.post('/:id/test', async (req, res) => {
   try {
     const result = await query(
-      'SELECT * FROM LeadSources WHERE id = @id AND source_type = @type',
+      'SELECT * FROM "LeadSources" WHERE id = @id AND source_type = @type',
       { id: parseInt(req.params.id), type: 'external_db' }
     );
     const source = result.recordset[0];
@@ -207,7 +200,7 @@ router.post('/:id/test', async (req, res) => {
 router.post('/:id/sync', async (req, res) => {
   try {
     const result = await query(
-      'SELECT * FROM LeadSources WHERE id = @id AND source_type = @type',
+      'SELECT * FROM "LeadSources" WHERE id = @id AND source_type = @type',
       { id: parseInt(req.params.id), type: 'external_db' }
     );
     const source = result.recordset[0];
@@ -216,7 +209,6 @@ router.post('/:id/sync', async (req, res) => {
     source.config     = source.config     ? JSON.parse(source.config)     : {};
     source.column_map = source.column_map ? JSON.parse(source.column_map) : {};
 
-    // Respond immediately, run sync in background
     res.json({ message: 'Sync started' });
     syncExternalSource(source)
       .then(r => logger.info(`Manual sync done: ${JSON.stringify(r)}`))
@@ -232,7 +224,7 @@ router.post('/:id/regenerate-key', async (req, res) => {
   try {
     const new_key = `wz_${uuidv4().replace(/-/g, '')}`;
     await query(
-      `UPDATE LeadSources SET api_key = @key WHERE id = @id AND source_type = 'landing_page'`,
+      `UPDATE "LeadSources" SET api_key = @key WHERE id = @id AND source_type = 'landing_page'`,
       { key: new_key, id: parseInt(req.params.id) }
     );
     res.json({ api_key: new_key });
@@ -244,7 +236,7 @@ router.post('/:id/regenerate-key', async (req, res) => {
 // ── Delete a source ───────────────────────────────────────────
 router.delete('/:id', async (req, res) => {
   try {
-    await query('DELETE FROM LeadSources WHERE id = @id', { id: parseInt(req.params.id) });
+    await query('DELETE FROM "LeadSources" WHERE id = @id', { id: parseInt(req.params.id) });
     res.json({ message: 'Source deleted' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete source' });

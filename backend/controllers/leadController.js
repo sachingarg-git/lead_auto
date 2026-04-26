@@ -40,7 +40,7 @@ async function logChange(lead_id, field_name, old_value, new_value, user, extraN
 
 // ── Fetch all users for name resolution ──────────────────────
 async function getUsersMap() {
-  const r = await query('SELECT id, name FROM Users');
+  const r = await query('SELECT id, name FROM "Users"');
   const map = {};
   r.recordset.forEach(u => { map[u.id] = u.name; });
   return map;
@@ -242,26 +242,49 @@ async function addFollowUp(req, res) {
   try {
     const { status, note, next_followup_date } = req.body;
     const lead_id = parseInt(req.params.id);
+
     const validStatuses = ['New', 'FollowUp', 'DemoGiven', 'Converted', 'Lost', 'Nurture'];
-    if (!status || !validStatuses.includes(status)) {
-      return res.status(400).json({ error: 'Invalid or missing status' });
+
+    // status is OPTIONAL — if provided it must be a valid LMS status
+    if (status && !validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status', valid: validStatuses });
+    }
+
+    // Need at least a note or a status change
+    if (!status && !note?.trim()) {
+      return res.status(400).json({ error: 'Please provide a follow-up note or select a new status' });
     }
 
     const oldLead = await Lead.findById(lead_id);
-    const lead    = await Lead.updateStatus(lead_id, status, req.user.id, note);
-    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+    if (!oldLead) return res.status(404).json({ error: 'Lead not found' });
 
-    const followup = await FollowUp.create({ lead_id, status, note, next_followup_date, created_by: req.user.id });
+    // Only update the lead's status if a valid new status was explicitly chosen
+    let lead;
+    if (status && validStatuses.includes(status)) {
+      lead = await Lead.updateStatus(lead_id, status, req.user.id, note);
+    } else {
+      lead = oldLead;
+    }
+
+    // Store follow-up with effective status (new or current)
+    const effectiveStatus = status || oldLead.status;
+    const followup = await FollowUp.create({
+      lead_id,
+      status: effectiveStatus,
+      note,
+      next_followup_date,
+      created_by: req.user.id,
+    });
 
     // Log followup action to activity
     await Lead.logActivity({
       lead_id,
       action_type: 'followup',
-      field_name:  'Status',
-      old_value:   oldLead?.status || null,
-      new_value:   status,
+      field_name:  status ? 'Status' : 'Note',
+      old_value:   status ? (oldLead?.status || null) : null,
+      new_value:   status || null,
       note:        [
-        note || '',
+        note?.trim() || '',
         next_followup_date ? `Next follow-up: ${next_followup_date}` : '',
       ].filter(Boolean).join(' | ') || null,
       created_by:  req.user.id,
@@ -354,11 +377,11 @@ async function getActivity(req, res) {
 async function deleteLead(req, res) {
   try {
     const id = parseInt(req.params.id);
-    await query('DELETE FROM FollowUps WHERE lead_id = @id',         { id });
-    await query('DELETE FROM LeadStatusHistory WHERE lead_id = @id', { id }).catch(() => {});
-    await query('DELETE FROM LeadActivityLog WHERE lead_id = @id',   { id }).catch(() => {});
-    await query('DELETE FROM Reminders WHERE lead_id = @id',         { id }).catch(() => {});
-    await query('DELETE FROM Leads WHERE id = @id',                  { id });
+    await query('DELETE FROM "FollowUps" WHERE lead_id = @id',         { id });
+    await query('DELETE FROM "LeadStatusHistory" WHERE lead_id = @id', { id }).catch(() => {});
+    await query('DELETE FROM "LeadActivityLog" WHERE lead_id = @id',   { id }).catch(() => {});
+    await query('DELETE FROM "Reminders" WHERE lead_id = @id',         { id }).catch(() => {});
+    await query('DELETE FROM "Leads" WHERE id = @id',                  { id });
 
     const io = req.app.get('io');
     io.to('dashboard').emit('lead:updated', { id, deleted: true });

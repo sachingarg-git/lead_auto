@@ -46,8 +46,8 @@ router.post('/', captureLimiter, async (req, res) => {
   }
 
   const sourceResult = await query(
-    `SELECT * FROM LeadSources
-     WHERE api_key = @api_key AND is_active = 1 AND source_type = 'landing_page'`,
+    `SELECT * FROM "LeadSources"
+     WHERE api_key = @api_key AND is_active = true AND source_type = 'landing_page'`,
     { api_key: apiKey }
   );
 
@@ -139,9 +139,9 @@ router.post('/', captureLimiter, async (req, res) => {
     // ── 6. Deduplicate (same phone + source within 24 h) ────
     if (leadData.phone) {
       const dup = await query(
-        `SELECT id FROM Leads
+        `SELECT id FROM "Leads"
          WHERE phone = @phone AND source = @source
-           AND created_at >= DATEADD(HOUR, -24, GETDATE())`,
+           AND created_at >= NOW() - INTERVAL '24 hours'`,
         { phone: leadData.phone, source: source.name }
       );
       if (dup.recordset.length) {
@@ -157,8 +157,8 @@ router.post('/', captureLimiter, async (req, res) => {
 
     // Increment source sync counter
     await query(
-      `UPDATE LeadSources
-       SET sync_count = sync_count + 1, last_synced = GETDATE()
+      `UPDATE "LeadSources"
+       SET sync_count = sync_count + 1, last_synced = NOW()
        WHERE id = @id`,
       { id: source.id }
     );

@@ -34,7 +34,7 @@ async function scheduleRemindersForLead(lead) {
 
   // Cancel existing pending reminders for this lead
   await query(
-    `UPDATE Reminders SET status = 'Skipped' WHERE lead_id = @lead_id AND status = 'Pending'`,
+    `UPDATE "Reminders" SET status = 'Skipped' WHERE lead_id = @lead_id AND status = 'Pending'`,
     { lead_id: lead.id }
   );
 
@@ -46,7 +46,7 @@ async function scheduleRemindersForLead(lead) {
       continue;
     }
     await query(
-      `INSERT INTO Reminders (lead_id, reminder_type, scheduled_at, status, channel)
+      `INSERT INTO "Reminders" (lead_id, reminder_type, scheduled_at, status, channel)
        VALUES (@lead_id, @reminder_type, @scheduled_at, 'Pending', 'All')`,
       { lead_id: lead.id, reminder_type: key, scheduled_at: new Date(fireAt) }
     );
@@ -58,7 +58,7 @@ async function scheduleRemindersForLead(lead) {
   nineAM.setHours(9, 0, 0, 0);
   if (nineAM.getTime() > now) {
     await query(
-      `INSERT INTO Reminders (lead_id, reminder_type, scheduled_at, status, channel)
+      `INSERT INTO "Reminders" (lead_id, reminder_type, scheduled_at, status, channel)
        VALUES (@lead_id, 'same_day_9am', @scheduled_at, 'Pending', 'All')`,
       { lead_id: lead.id, scheduled_at: nineAM }
     );

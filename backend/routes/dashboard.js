@@ -18,33 +18,36 @@ router.get('/summary', async (req, res) => {
           SUM(CASE WHEN status='Converted' THEN 1 ELSE 0 END) AS converted,
           SUM(CASE WHEN status='Lost' THEN 1 ELSE 0 END) AS lost,
           SUM(CASE WHEN client_type='Type1' THEN 1 ELSE 0 END) AS meeting_booked,
-          SUM(CASE WHEN welcome_sent=1 THEN 1 ELSE 0 END) AS welcome_sent
-        FROM Leads
+          SUM(CASE WHEN welcome_sent = true THEN 1 ELSE 0 END) AS welcome_sent
+        FROM "Leads"
       `),
 
       // Most recent 10 leads
       query(`
-        SELECT TOP 10 l.id, l.full_name, l.email, l.phone, l.status,
+        SELECT l.id, l.full_name, l.email, l.phone, l.status,
           l.client_type, l.source, l.created_at, u.name AS assigned_to_name
-        FROM Leads l LEFT JOIN Users u ON l.assigned_to = u.id
+        FROM "Leads" l LEFT JOIN "Users" u ON l.assigned_to = u.id
         ORDER BY l.created_at DESC
+        LIMIT 10
       `),
 
       // Upcoming reminders (next 4h)
       query(`
-        SELECT TOP 5 r.id, r.reminder_type, r.scheduled_at, r.channel,
+        SELECT r.id, r.reminder_type, r.scheduled_at, r.channel,
           l.full_name, l.id AS lead_id
-        FROM Reminders r JOIN Leads l ON r.lead_id = l.id
-        WHERE r.status='Pending' AND r.scheduled_at BETWEEN GETDATE() AND DATEADD(HOUR, 4, GETDATE())
+        FROM "Reminders" r JOIN "Leads" l ON r.lead_id = l.id
+        WHERE r.status='Pending'
+          AND r.scheduled_at BETWEEN NOW() AND NOW() + INTERVAL '4 hours'
         ORDER BY r.scheduled_at ASC
+        LIMIT 5
       `),
 
       // 7-day lead trend
       query(`
-        SELECT CAST(created_at AS DATE) AS date, COUNT(*) AS count
-        FROM Leads
-        WHERE created_at >= DATEADD(DAY, -7, GETDATE())
-        GROUP BY CAST(created_at AS DATE)
+        SELECT created_at::date AS date, COUNT(*) AS count
+        FROM "Leads"
+        WHERE created_at >= NOW() - INTERVAL '7 days'
+        GROUP BY created_at::date
         ORDER BY date ASC
       `),
 
@@ -52,7 +55,7 @@ router.get('/summary', async (req, res) => {
       query(`
         SELECT source, COUNT(*) AS count,
           SUM(CASE WHEN status='Converted' THEN 1 ELSE 0 END) AS converted
-        FROM Leads
+        FROM "Leads"
         WHERE source IS NOT NULL
         GROUP BY source
         ORDER BY count DESC
@@ -61,7 +64,7 @@ router.get('/summary', async (req, res) => {
       // Conversions by agent (kept for bar chart)
       query(`
         SELECT u.name AS agent_name, COUNT(*) AS converted
-        FROM Leads l JOIN Users u ON l.assigned_to = u.id
+        FROM "Leads" l JOIN "Users" u ON l.assigned_to = u.id
         WHERE l.status = 'Converted'
         GROUP BY u.name
         ORDER BY converted DESC
@@ -96,14 +99,14 @@ router.get('/schedule', async (req, res) => {
         l.company,
         l.status,
         l.source,
-        l.meeting_datetime          AS slot_dt,
-        CAST(l.meeting_datetime AS DATE) AS slot_date_only,
-        ISNULL(l.meeting_status, 'upcoming') AS meeting_status,
-        ISNULL(l.reschedule_count, 0) AS reschedule_count
-      FROM Leads l
+        l.meeting_datetime                          AS slot_dt,
+        l.meeting_datetime::date                    AS slot_date_only,
+        COALESCE(l.meeting_status, 'upcoming')      AS meeting_status,
+        COALESCE(l.reschedule_count, 0)             AS reschedule_count
+      FROM "Leads" l
       WHERE l.meeting_datetime IS NOT NULL
-        AND CAST(l.meeting_datetime AS DATE) >= CAST(GETDATE() AS DATE)
-        AND CAST(l.meeting_datetime AS DATE) < DATEADD(DAY, 31, CAST(GETDATE() AS DATE))
+        AND l.meeting_datetime::date >= CURRENT_DATE
+        AND l.meeting_datetime::date <  CURRENT_DATE + INTERVAL '31 days'
         AND l.status NOT IN ('Converted','Lost')
       ORDER BY l.meeting_datetime ASC
     `);
@@ -119,23 +122,22 @@ router.get('/schedule', async (req, res) => {
         l.source,
         l.slot_date,
         l.slot_time,
-        ISNULL(l.meeting_status, 'upcoming') AS meeting_status,
-        ISNULL(l.reschedule_count, 0) AS reschedule_count
-      FROM Leads l
+        COALESCE(l.meeting_status, 'upcoming')  AS meeting_status,
+        COALESCE(l.reschedule_count, 0)         AS reschedule_count
+      FROM "Leads" l
       WHERE l.meeting_datetime IS NULL
         AND l.slot_date IS NOT NULL
-        AND TRY_CAST(l.slot_date AS DATE) >= CAST(GETDATE() AS DATE)
-        AND TRY_CAST(l.slot_date AS DATE) < DATEADD(DAY, 31, CAST(GETDATE() AS DATE))
+        AND l.slot_date >= CURRENT_DATE
+        AND l.slot_date <  CURRENT_DATE + INTERVAL '31 days'
         AND l.status NOT IN ('Converted','Lost')
-      ORDER BY TRY_CAST(l.slot_date AS DATE) ASC, l.slot_time ASC
+      ORDER BY l.slot_date ASC, l.slot_time ASC
     `);
 
-    // Normalise both into a flat list: { lead_id, full_name, phone, company, status, date_key, time_str }
+    // Normalise both into a flat list
     const today    = new Date(); today.setHours(0,0,0,0);
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
 
     function dateKey(d) {
-      // YYYY-MM-DD in LOCAL timezone (avoids UTC midnight shift in IST)
       const y   = d.getFullYear();
       const m   = String(d.getMonth() + 1).padStart(2, '0');
       const day = String(d.getDate()).padStart(2, '0');
@@ -148,19 +150,18 @@ router.get('/schedule', async (req, res) => {
       const d = new Date(r.slot_dt);
       const d0 = new Date(d); d0.setHours(0,0,0,0);
       items.push({
-        lead_id:         r.lead_id,
-        full_name:       r.full_name,
-        phone:           r.phone,
-        company:         r.company,
-        status:          r.status,
-        meeting_status:  r.meeting_status,
+        lead_id:          r.lead_id,
+        full_name:        r.full_name,
+        phone:            r.phone,
+        company:          r.company,
+        status:           r.status,
+        meeting_status:   r.meeting_status,
         reschedule_count: r.reschedule_count,
-        date_key:        dateKey(d0),
-        date_obj:        d0,
-        // Store ISO datetime for 5-min alert on frontend
-        slot_iso:        d.toISOString(),
-        time_str:        d.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true }),
-        sort_ts:         d.getTime(),
+        date_key:         dateKey(d0),
+        date_obj:         d0,
+        slot_iso:         d.toISOString(),
+        time_str:         d.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12:true }),
+        sort_ts:          d.getTime(),
       });
     }
 
@@ -168,6 +169,19 @@ router.get('/schedule', async (req, res) => {
       const parsed = r.slot_date ? new Date(r.slot_date) : null;
       if (!parsed || isNaN(parsed)) continue;
       parsed.setHours(0,0,0,0);
+
+      // PostgreSQL TIME columns are returned as "HH:MM:SS" strings
+      const timeStr = (() => {
+        if (!r.slot_time) return null;
+        const t = String(r.slot_time);
+        const parts = t.split(':');
+        const hh = parseInt(parts[0], 10);
+        const mm = (parts[1] || '00').substring(0, 2);
+        const ap = hh >= 12 ? 'PM' : 'AM';
+        const h12 = hh % 12 || 12;
+        return `${String(h12).padStart(2,'0')}:${mm} ${ap}`;
+      })();
+
       items.push({
         lead_id:          r.lead_id,
         full_name:        r.full_name,
@@ -179,18 +193,8 @@ router.get('/schedule', async (req, res) => {
         date_key:         dateKey(parsed),
         date_obj:         parsed,
         slot_iso:         null,
-        time_str:  (() => {
-          if (!r.slot_time) return null;
-          // mssql TIME type → Date anchored at 1970-01-01 with time in UTC.
-          // Use UTC methods so we read the stored time directly, not shifted by server TZ.
-          const t  = new Date(r.slot_time);
-          const hh = t.getUTCHours();
-          const mm = String(t.getUTCMinutes()).padStart(2, '0');
-          const ap = hh >= 12 ? 'PM' : 'AM';
-          const h12 = hh % 12 || 12;
-          return `${String(h12).padStart(2, '0')}:${mm} ${ap}`;
-        })(),
-        sort_ts:   parsed.getTime(),
+        time_str:         timeStr,
+        sort_ts:          parsed.getTime(),
       });
     }
 
@@ -204,7 +208,7 @@ router.get('/schedule', async (req, res) => {
       groups[item.date_key].push(item);
     }
 
-    // Build ordered array: [ { date_key, label, items[] } ]
+    // Build ordered array
     const result = Object.entries(groups).map(([dk, its]) => {
       const d = its[0].date_obj;
       d.setHours(0,0,0,0);
@@ -212,7 +216,7 @@ router.get('/schedule', async (req, res) => {
       const tomorrowTs = tomorrow.getTime();
       const dTs        = d.getTime();
       let label;
-      if (dTs === todayTs)    label = 'Today';
+      if (dTs === todayTs)         label = 'Today';
       else if (dTs === tomorrowTs) label = 'Tomorrow';
       else label = d.toLocaleDateString('en-IN', { weekday:'short', day:'numeric', month:'short' });
 

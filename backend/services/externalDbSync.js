@@ -119,8 +119,6 @@ function mapRow(row, columnMap, sourceName) {
   }
 
   // ── Auto-combine split date + time columns ─────────────────
-  // Common pattern: source has "preferred_date" + "preferred_time" separately
-  // We merge them into preferred_slot if not already set by column_map
   if (!mapped.preferred_slot) {
     const dateVal = row['preferred_date'] ?? row['booking_date'] ?? row['slot_date'] ?? null;
     const timeVal = row['preferred_time'] ?? row['booking_time'] ?? row['slot_time'] ?? null;
@@ -242,7 +240,7 @@ async function syncExternalSource(source) {
     logger.info(`Source "${name}": no new rows since id=${lastId}`);
     // Still update last_synced timestamp
     await localQuery(
-      `UPDATE LeadSources SET last_synced = GETDATE() WHERE id = @id`,
+      `UPDATE "LeadSources" SET last_synced = NOW() WHERE id = @id`,
       { id: sourceId }
     );
     return { imported: 0 };
@@ -266,8 +264,8 @@ async function syncExternalSource(source) {
       // Dedup by phone + source (within last 30 days)
       if (leadData.phone) {
         const existing = await localQuery(
-          `SELECT id FROM Leads WHERE phone = @phone AND source = @source
-           AND created_at >= DATEADD(DAY, -30, GETDATE())`,
+          `SELECT id FROM "Leads" WHERE phone = @phone AND source = @source
+           AND created_at >= NOW() - INTERVAL '30 days'`,
           { phone: leadData.phone, source: name }
         );
         if (existing.recordset.length) {
@@ -288,8 +286,8 @@ async function syncExternalSource(source) {
 
   // Update sync stats
   await localQuery(
-    `UPDATE LeadSources SET
-       last_synced  = GETDATE(),
+    `UPDATE "LeadSources" SET
+       last_synced  = NOW(),
        sync_count   = sync_count + @count,
        last_sync_id = @last_id
      WHERE id = @id`,
@@ -305,7 +303,7 @@ function startExternalSyncScheduler() {
   cron.schedule('*/5 * * * *', async () => {
     try {
       const result = await localQuery(
-        `SELECT * FROM LeadSources WHERE source_type = 'external_db' AND is_active = 1`
+        `SELECT * FROM "LeadSources" WHERE source_type = 'external_db' AND is_active = true`
       );
 
       for (const sourceRow of result.recordset) {

@@ -14,7 +14,7 @@ async function authenticate(req, res, next) {
     // Fetch fresh user from DB (catches deactivated accounts)
     const result = await query(
       `SELECT u.id, u.name, u.email, u.role_id, u.is_active, r.name AS role_name, r.permissions
-       FROM Users u JOIN Roles r ON u.role_id = r.id
+       FROM "Users" u JOIN "Roles" r ON u.role_id = r.id
        WHERE u.id = @id`,
       { id: decoded.userId }
     );

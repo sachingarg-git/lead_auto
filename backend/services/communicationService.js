@@ -14,7 +14,7 @@ const logger = require('../config/logger');
 async function logCommunication(leadId, reminderId, channel, status, providerId, message) {
   try {
     await query(
-      `INSERT INTO CommunicationLogs (lead_id, reminder_id, channel, status, provider_id, message)
+      `INSERT INTO "CommunicationLogs" (lead_id, reminder_id, channel, status, provider_id, message)
        VALUES (@lead_id, @reminder_id, @channel, @status, @provider_id, @message)`,
       {
         lead_id:    leadId,
@@ -72,13 +72,15 @@ async function sendWelcomeMessages(lead) {
   }
 
   // Mark welcome as sent (once-only flag)
-  await query('UPDATE Leads SET welcome_sent = 1, last_contacted = GETDATE() WHERE id = @id', { id: lead.id });
+  await query(
+    'UPDATE "Leads" SET welcome_sent = true, last_contacted = NOW() WHERE id = @id',
+    { id: lead.id }
+  );
 }
 
 /**
  * Manual: Send email to a specific lead.
  * template: 'welcome' | 'custom'
- * If custom, customSubject + customBody must be provided.
  */
 async function sendManualEmail(lead, { template = 'welcome', customSubject, customBody } = {}) {
   let payload;
@@ -99,7 +101,7 @@ async function sendManualEmail(lead, { template = 'welcome', customSubject, cust
   if (msgId) {
     await logCommunication(lead.id, null, 'Email', 'Delivered', msgId, `Manual email — ${template}`);
     await query(
-      'UPDATE Leads SET last_contacted = GETDATE(), contact_count = contact_count + 1 WHERE id = @id',
+      'UPDATE "Leads" SET last_contacted = NOW(), contact_count = contact_count + 1 WHERE id = @id',
       { id: lead.id }
     );
   }
@@ -127,7 +129,7 @@ async function sendManualWhatsApp(lead, { template = 'welcome', customMessage } 
   if (result) {
     await logCommunication(lead.id, null, 'WhatsApp', 'Delivered', null, `Manual WA — ${template}`);
     await query(
-      'UPDATE Leads SET last_contacted = GETDATE(), contact_count = contact_count + 1 WHERE id = @id',
+      'UPDATE "Leads" SET last_contacted = NOW(), contact_count = contact_count + 1 WHERE id = @id',
       { id: lead.id }
     );
   }
@@ -163,7 +165,7 @@ async function sendMeetingReminder(lead, reminderType, reminderId) {
   }
 
   await query(
-    'UPDATE Leads SET last_contacted = GETDATE(), contact_count = contact_count + 1 WHERE id = @id',
+    'UPDATE "Leads" SET last_contacted = NOW(), contact_count = contact_count + 1 WHERE id = @id',
     { id: lead.id }
   );
 }
@@ -193,7 +195,7 @@ async function sendFollowUpMessage(lead, dayNumber, reminderId) {
   }
 
   await query(
-    'UPDATE Leads SET last_contacted = GETDATE(), contact_count = contact_count + 1 WHERE id = @id',
+    'UPDATE "Leads" SET last_contacted = NOW(), contact_count = contact_count + 1 WHERE id = @id',
     { id: lead.id }
   );
 }
