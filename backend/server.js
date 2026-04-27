@@ -319,6 +319,44 @@ async function start() {
     startExternalSyncScheduler();
     logger.info('Background workers started');
 
+    // ── Auto-heal: generate Meet links for any slotted leads that missed them ──
+    // Runs once at startup — catches leads that were booked while server was down
+    setImmediate(async () => {
+      try {
+        const { createMeetLink } = require('./services/googleMeetService');
+        const missed = await pool.query(
+          `SELECT id, full_name, slot_date, slot_time, email
+           FROM "Leads"
+           WHERE slot_date IS NOT NULL
+             AND slot_time IS NOT NULL
+             AND (meeting_link IS NULL OR meeting_link = '')
+           LIMIT 50`
+        );
+        if (missed.rows.length > 0) {
+          logger.info(`[Startup] Auto-generating Meet links for ${missed.rows.length} lead(s) that missed automation`);
+          for (const lead of missed.rows) {
+            try {
+              const meetLink = await createMeetLink({
+                title        : `Wizone AI Demo — ${lead.full_name}`,
+                slotDate     : lead.slot_date,
+                slotTime     : lead.slot_time,
+                durationMins : 60,
+                attendeeEmail: lead.email || undefined,
+              });
+              if (meetLink) {
+                await pool.query(`UPDATE "Leads" SET meeting_link=$1 WHERE id=$2`, [meetLink, lead.id]);
+                logger.info(`[Startup] Meet link healed for lead ${lead.id} (${lead.full_name}): ${meetLink}`);
+              }
+            } catch (e) {
+              logger.warn(`[Startup] Meet link heal failed for lead ${lead.id}:`, e.message);
+            }
+          }
+        }
+      } catch (e) {
+        logger.warn('[Startup] Meet link auto-heal skipped:', e.message);
+      }
+    });
+
     httpServer.listen(PORT, () => {
       logger.info(`Wizone LMS backend running on port ${PORT}`);
     });

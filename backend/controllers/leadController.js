@@ -171,6 +171,30 @@ async function updateLead(req, res) {
       await scheduleRemindersForLead(updated);
     }
 
+    // ── Auto-create Meet link if slot was just set and no link exists yet ──
+    // Covers all update paths: edit form, inline edit, any field update with slot
+    const slotJustSet = (req.body.slot_date || req.body.slot_time) && !old.meeting_link && !updated.meeting_link;
+    if (slotJustSet && updated.slot_date && updated.slot_time) {
+      try {
+        const meetLink = await createMeetLink({
+          title        : `Wizone AI Demo — ${updated.full_name}`,
+          slotDate     : updated.slot_date,
+          slotTime     : updated.slot_time,
+          durationMins : 60,
+          attendeeEmail: updated.email || undefined,
+        });
+        if (meetLink) {
+          const pool = await getPool();
+          await pool.query(`UPDATE "Leads" SET meeting_link=$1 WHERE id=$2`, [meetLink, id]);
+          updated.meeting_link = meetLink;
+          logger.info(`[updateLead] Meet link auto-created for lead ${id}: ${meetLink}`);
+          io.to('dashboard').emit('lead:updated', updated);
+        }
+      } catch (meetErr) {
+        logger.warn(`[updateLead] Meet link skipped for lead ${id}:`, meetErr.message);
+      }
+    }
+
     res.json(updated);
   } catch (err) {
     logger.error('updateLead error:', err);
