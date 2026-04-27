@@ -28,6 +28,68 @@ router.get('/:id/activity',   authorize('leads:read'),   getActivity);
 router.post('/:id/send-email',     authorize('leads:write'), sendEmail);
 router.post('/:id/send-whatsapp',  authorize('leads:write'), sendWhatsApp);
 
+// POST /api/leads/:id/generate-meet-link — Manually create Meet link + send email to customer
+router.post('/:id/generate-meet-link', authenticate, authorize('leads:write'), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { getPool } = require('../config/database');
+    const Lead = require('../models/Lead');
+    const { createMeetLink } = require('../services/googleMeetService');
+    const { sendMeetLinkEmail } = require('../services/emailService');
+    const logger = require('../config/logger');
+
+    const lead = await Lead.findById(id);
+    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+
+    // Generate fresh meet link (always — allows regeneration)
+    const meetLink = await createMeetLink({
+      title        : `Wizone AI Demo — ${lead.full_name}`,
+      slotDate     : lead.slot_date,
+      slotTime     : lead.slot_time,
+      durationMins : 60,
+      attendeeEmail: lead.email || undefined,
+    });
+
+    if (!meetLink) return res.status(500).json({ error: 'Failed to generate meet link' });
+
+    // Save to DB
+    const pool = await getPool();
+    await pool.query(`UPDATE "Leads" SET meeting_link=$1, updated_at=NOW() WHERE id=$2`, [meetLink, id]);
+
+    // Log activity
+    await Lead.logActivity({
+      lead_id    : id,
+      action_type: 'edit',
+      field_name : 'Meeting Link',
+      new_value  : meetLink,
+      created_by : req.user?.id,
+      actor_name : req.user?.name || 'Admin',
+    });
+
+    lead.meeting_link = meetLink;
+
+    // Send dedicated Meet Link email to customer
+    let emailSent = false;
+    if (lead.email) {
+      try {
+        const msgId = await sendMeetLinkEmail(lead);
+        emailSent = !!msgId;
+        if (emailSent) logger.info(`[GenerateMeet] Meet link email sent to ${lead.email} for lead ${id}`);
+      } catch (emailErr) {
+        logger.warn(`[GenerateMeet] Meet link email failed for lead ${id}:`, emailErr.message);
+      }
+    }
+
+    logger.info(`[GenerateMeet] Meet link created for lead ${id} (${lead.full_name}): ${meetLink}`);
+    res.json({ success: true, meeting_link: meetLink, email_sent: emailSent });
+
+  } catch (err) {
+    const logger = require('../config/logger');
+    logger.error('generate-meet-link error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/leads/:id/set-slot — Set slot date+time and auto-create Google Meet link
 router.post('/:id/set-slot', authenticate, authorize('leads:write'), async (req, res) => {
   try {

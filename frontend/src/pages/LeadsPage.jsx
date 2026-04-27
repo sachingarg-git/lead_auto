@@ -336,6 +336,21 @@ export default function LeadsPage() {
                   onAssigned={() => loadLeads()}
                   onEmail={() => setSendModal({ lead, channel: 'email' })}
                   onWhatsApp={() => setSendModal({ lead, channel: 'whatsapp' })}
+                  onGenerateMeet={() => {
+                    toast.promise(
+                      leadsApi.generateMeetLink(lead.id).then(r => {
+                        loadLeads(); // refresh to show new 🎥 icon
+                        return r.data;
+                      }),
+                      {
+                        loading: 'Generating meet link…',
+                        success: d => d.email_sent
+                          ? `✅ Meet link created & email sent to ${lead.email}`
+                          : `✅ Meet link created${!lead.email ? ' (no email on file)' : ''}`,
+                        error: e => `Failed: ${e.response?.data?.error || e.message}`,
+                      }
+                    );
+                  }}
                 />
               ))}
             </tbody>
@@ -492,7 +507,7 @@ function DateCard({ label, sub, count, accent, light, textColor, icon, active, o
 }
 
 /* ── Lead Row ─────────────────────────────────────────────────── */
-function LeadRow({ lead, users, onFollowUp, onDelete, onAssigned, onEmail, onWhatsApp }) {
+function LeadRow({ lead, users, onFollowUp, onDelete, onAssigned, onEmail, onWhatsApp, onGenerateMeet }) {
   const st = S[lead.status] || S.New;
   const followupCount = parseInt(lead.followup_count) || 0;
   const [showAssign, setShowAssign] = useState(false);
@@ -754,6 +769,22 @@ function LeadRow({ lead, users, onFollowUp, onDelete, onAssigned, onEmail, onWha
               </svg>
             </button>
           )}
+
+          {/* Generate Meet Link */}
+          <button
+            onClick={e => { e.stopPropagation(); onGenerateMeet(); }}
+            title={lead.meeting_link ? 'Regenerate Meet Link & Resend Email' : 'Generate Meet Link & Send Email'}
+            className={`w-7 h-7 flex items-center justify-center rounded-lg border transition-all shadow-sm
+              ${lead.meeting_link
+                ? 'border-violet-200 bg-violet-50 text-violet-500 hover:bg-violet-100 hover:border-violet-400'
+                : 'border-teal-200 bg-teal-50 text-teal-600 hover:bg-teal-100 hover:border-teal-400'
+              }`}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round"
+                d="M15 10l4.553-2.069A1 1 0 0121 8.82V15.18a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          </button>
 
           {/* Delete */}
           <button onClick={onDelete} title="Delete Lead"

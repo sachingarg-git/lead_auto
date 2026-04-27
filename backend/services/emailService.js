@@ -405,8 +405,112 @@ async function buildRescheduleEmail(lead, { newDate, newTime, reason, type } = {
   };
 }
 
+/**
+ * Build and send a dedicated "Your Meet Link" email to the lead.
+ * Checks EmailTemplates for a template named matching 'meet' keywords first.
+ * Falls back to a branded built-in template.
+ *
+ * @param {Object} lead  — full lead row from DB (must have email + meeting_link)
+ * @returns {Promise<string|null>} — messageId or null
+ */
+async function sendMeetLinkEmail(lead) {
+  if (!lead.email)        { logger.warn(`[MeetEmail] No email for lead ${lead.id}`); return null; }
+  if (!lead.meeting_link) { logger.warn(`[MeetEmail] No meeting_link for lead ${lead.id}`); return null; }
+
+  const companyName = process.env.COMPANY_NAME || 'Wizone AI';
+
+  // ── Try to find a "Meet Link" template in DB ──────────────────
+  let subject = '', body = '';
+  try {
+    const { getPool } = require('../config/database');
+    const pool = await getPool();
+    // Look for a template whose name contains 'meet' (case-insensitive)
+    const r = await pool.query(
+      `SELECT subject, body FROM "EmailTemplates"
+       WHERE LOWER(name) LIKE '%meet%' OR LOWER(name) LIKE '%video%' OR LOWER(name) LIKE '%link%'
+       ORDER BY id ASC LIMIT 1`
+    );
+    if (r.rows.length) { subject = r.rows[0].subject; body = r.rows[0].body; }
+  } catch (err) {
+    logger.warn('[MeetEmail] Template lookup failed:', err.message);
+  }
+
+  const slotDateStr = formatSlotDate(lead.slot_date);
+  const slotTimeStr = formatSlotTime(lead.slot_time);
+
+  if (subject && body) {
+    // Render configured template
+    const vars = {
+      full_name:    lead.full_name    || '',
+      phone:        lead.phone        || '',
+      email:        lead.email        || '',
+      company:      lead.company      || '',
+      company_name: companyName,
+      slot_date:    slotDateStr,
+      slot_time:    slotTimeStr,
+      meet_link:    lead.meeting_link,
+    };
+    const renderedSubject = renderTemplate(subject, vars);
+    const renderedBody    = renderTemplate(body, vars);
+    const html = wrapEmailHtml(
+      `<div style="white-space:pre-line">${renderedBody.replace(/\n/g, '<br>')}</div>`,
+      companyName
+    );
+    return sendEmail({ to: lead.email, subject: renderedSubject, html });
+  }
+
+  // ── Built-in branded fallback ─────────────────────────────────
+  const slotCard = slotDateStr ? `
+    <div style="background:#f0f9ff;border-left:4px solid #0891b2;padding:14px 18px;
+                border-radius:6px;margin:0 0 24px;">
+      <p style="margin:0;font-size:12px;color:#0e7490;font-weight:700;letter-spacing:1px;text-transform:uppercase;">
+        📅 Your Appointment
+      </p>
+      <p style="margin:6px 0 0;font-size:16px;font-weight:bold;color:#1e293b;">
+        ${slotDateStr}${slotTimeStr ? ' &nbsp;at&nbsp; <span style="color:#0891b2">' + slotTimeStr + ' IST</span>' : ''}
+      </p>
+    </div>` : '';
+
+  const html = wrapEmailHtml(`
+    <p style="font-size:17px;font-weight:bold;color:#0e7490;margin:0 0 8px;">
+      Hi ${lead.full_name},
+    </p>
+    <p style="margin:0 0 24px;color:#475569;line-height:1.7;">
+      Your Wizone AI demo meeting link is ready. Join a few minutes before your scheduled time.
+    </p>
+    ${slotCard}
+    <div style="text-align:center;background:#f8fafc;border:2px dashed #0891b2;
+                border-radius:12px;padding:28px 24px;margin-bottom:24px;">
+      <p style="margin:0 0 6px;font-size:12px;color:#64748b;letter-spacing:1px;text-transform:uppercase;">
+        🎥 Your Video Meeting Link
+      </p>
+      <a href="${lead.meeting_link}"
+         style="display:inline-block;background:#0891b2;color:#ffffff;
+                padding:14px 36px;border-radius:8px;text-decoration:none;
+                font-weight:bold;font-size:15px;margin:12px 0;">
+        Join Meeting →
+      </a>
+      <p style="margin:12px 0 0;font-size:12px;color:#94a3b8;word-break:break-all;">
+        ${lead.meeting_link}
+      </p>
+    </div>
+    <p style="margin:0;color:#64748b;font-size:13px;line-height:1.7;">
+      Please keep this link safe — it is unique to your session.<br>
+      If you have any questions, reply to this email or contact us on WhatsApp.<br><br>
+      <strong>${companyName} Team</strong>
+    </p>
+  `, companyName);
+
+  const renderedSubject = slotDateStr
+    ? `🎥 Your Meeting Link — ${slotDateStr} ${slotTimeStr ? 'at ' + slotTimeStr : ''} | ${companyName}`
+    : `🎥 Your Meeting Link | ${companyName}`;
+
+  return sendEmail({ to: lead.email, subject: renderedSubject, html });
+}
+
 module.exports = {
   sendEmail, testEmail, resetTransporter,
   buildWelcomeEmail, buildMeetingReminderEmail, buildFollowUpEmail,
   buildRescheduleEmail, formatSlotDate, formatSlotTime, renderTemplate, wrapEmailHtml,
+  sendMeetLinkEmail,
 };
