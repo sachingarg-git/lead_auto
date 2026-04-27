@@ -134,8 +134,10 @@ function wrapEmailHtml(bodyHtml, companyName = 'Wizone AI') {
 
         <!-- ── Logo Header ───────────────────────────── -->
         <tr>
-          <td style="background:linear-gradient(135deg,#0891b2 0%,#0e7490 100%);
-                     border-radius:12px 12px 0 0;padding:24px 32px;">
+          <td style="background:#ffffff;border-radius:12px 12px 0 0;
+                     padding:20px 32px 18px;
+                     border-bottom:3px solid #0891b2;
+                     border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;border-top:1px solid #e2e8f0;">
             <table width="100%" cellpadding="0" cellspacing="0">
               <tr>
                 <td style="padding:4px 0;">
@@ -146,19 +148,16 @@ function wrapEmailHtml(bodyHtml, companyName = 'Wizone AI') {
                        style="display:block;max-width:150px;height:50px;object-fit:contain;"
                        onerror="this.style.display='none';this.nextElementSibling.style.display='inline-block'">
                   <!-- Fallback text logo (shown only when image fails) -->
-                  <span style="display:none;font-size:20px;font-weight:900;color:#ffffff;
+                  <span style="display:none;font-size:20px;font-weight:900;color:#0e7490;
                                letter-spacing:-0.5px;font-family:Arial,sans-serif;">
-                    <span style="background:rgba(255,255,255,0.15);border-radius:6px;
-                                 padding:4px 10px;display:inline-block;">
-                      Wi<span style="color:#bae6fd;">zone</span>
-                      <sup style="font-size:10px;color:#bae6fd;font-weight:600;letter-spacing:1px;">AI</sup>
-                    </span>
+                    Wi<span style="color:#0891b2;">zone</span>
+                    <sup style="font-size:10px;color:#0891b2;font-weight:700;letter-spacing:1px;">AI</sup>
                   </span>
                 </td>
                 <td style="padding-left:14px;vertical-align:middle;text-align:right;">
-                  <span style="color:#e0f2fe;font-size:11px;font-weight:500;letter-spacing:0.5px;
+                  <span style="color:#0e7490;font-size:11px;font-weight:600;letter-spacing:0.5px;
                                display:block;">AI Lead Manager</span>
-                  <span style="color:#7dd3fc;font-size:10px;">wizone.ai</span>
+                  <span style="color:#94a3b8;font-size:10px;">wizone.ai</span>
                 </td>
               </tr>
             </table>
