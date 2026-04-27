@@ -65,6 +65,7 @@ export const leadsApi = {
   getActivity:    (id)             => api.get(`/leads/${id}/activity`),
   sendEmail:      (id, data)       => api.post(`/leads/${id}/send-email`, data),
   sendWhatsApp:   (id, data)       => api.post(`/leads/${id}/send-whatsapp`, data),
+  setSlot:        (id, data)       => api.post(`/leads/${id}/set-slot`, data),
 };
 
 // ── Dashboard ─────────────────────────────────────────────────
@@ -129,6 +130,7 @@ export const meetingsApi = {
   reschedule:     (id, data) => api.post(`/meetings/${id}/reschedule`, data),
   getReschedules: (id)       => api.get(`/meetings/${id}/reschedules`),
   checkSlot:      (params)   => api.get('/meetings/slots/check', { params }),
+  getBookedSlots: (date, exclude_lead_id) => api.get('/meetings/slots/booked', { params: { date, exclude_lead_id } }),
 };
 
 export default api;

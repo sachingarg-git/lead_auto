@@ -556,28 +556,56 @@ export default function SettingsPage() {
 
       {/* ── Preview Modal ─────────────────────────────────── */}
       {previewData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <div>
-                <h3 className="font-bold text-slate-800 text-base">Email Preview</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Sample data: Rahul Sharma · rahul@example.com</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-slate-100 rounded-2xl shadow-2xl w-full max-w-3xl flex flex-col"
+               style={{ height: '92vh' }}>
+
+            {/* ── Modal header (mimics email client toolbar) */}
+            <div className="bg-white rounded-t-2xl border-b border-slate-200 px-5 py-3 flex items-center gap-3 shrink-0">
+              {/* Traffic lights */}
+              <div className="flex gap-1.5">
+                <button onClick={() => setPreviewData(null)}
+                  className="w-3 h-3 rounded-full bg-red-400 hover:bg-red-500 transition-colors" />
+                <div className="w-3 h-3 rounded-full bg-amber-400" />
+                <div className="w-3 h-3 rounded-full bg-green-400" />
               </div>
-              <button type="button" onClick={() => setPreviewData(null)}
-                className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+              <div className="flex-1 bg-slate-100 rounded-lg px-3 py-1 text-xs text-slate-500 font-mono truncate">
+                📧 {previewData.subject}
+              </div>
             </div>
-            <div className="px-6 py-3 bg-slate-50 border-b border-slate-100">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Subject: </span>
-              <span className="text-sm text-slate-700">{previewData.subject}</span>
+
+            {/* ── Email meta bar */}
+            <div className="bg-white border-b border-slate-200 px-5 py-3 shrink-0">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-full bg-sky-100 flex items-center justify-center text-sky-600 text-xs font-bold shrink-0">W</div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-slate-800">Wizone AI</span>
+                    <span className="text-xs text-slate-400 shrink-0">Just now</span>
+                  </div>
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    to: <span className="text-slate-700">rahul@example.com</span>
+                  </div>
+                  <div className="mt-1 text-xs font-semibold text-slate-700 truncate">
+                    {previewData.subject}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-2 pt-2 border-t border-slate-100 flex items-center gap-2">
+                <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-medium">SAMPLE DATA</span>
+                <span className="text-[10px] text-slate-400">Rahul Sharma · rahul@example.com · ABC Pvt Ltd · Slot: 28 Apr 2026 @ 10:00 AM</span>
+              </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-6">
-              <div dangerouslySetInnerHTML={{ __html: previewData.html }} />
-            </div>
-            <div className="px-6 py-4 border-t border-slate-100">
-              <button type="button" onClick={() => setPreviewData(null)}
-                className="w-full h-10 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition-all">
-                Close Preview
-              </button>
+
+            {/* ── Email body rendered in isolated iframe */}
+            <div className="flex-1 overflow-hidden rounded-b-2xl bg-white">
+              <iframe
+                srcDoc={previewData.html}
+                title="Email Preview"
+                className="w-full h-full border-0 rounded-b-2xl"
+                sandbox="allow-same-origin"
+                style={{ display: 'block' }}
+              />
             </div>
           </div>
         </div>

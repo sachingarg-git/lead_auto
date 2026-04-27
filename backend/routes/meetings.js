@@ -26,6 +26,46 @@ function fmtIST(dt) {
   });
 }
 
+/* ── GET /slots/booked — All booked time slots for a given date ─ */
+router.get('/slots/booked', async (req, res) => {
+  try {
+    const { date, exclude_lead_id } = req.query;
+    if (!date) return res.status(400).json({ error: 'date required (YYYY-MM-DD)' });
+
+    const excludeClause = exclude_lead_id ? `AND id <> @exclude` : '';
+    const params = { date, ...(exclude_lead_id ? { exclude: parseInt(exclude_lead_id) } : {}) };
+
+    // Leads booked via slot_date + slot_time (landing page flow)
+    const r1 = await query(`
+      SELECT TO_CHAR(slot_time, 'HH24:MI') AS t
+      FROM "Leads"
+      WHERE slot_date = @date::date
+        AND slot_time IS NOT NULL
+        AND status NOT IN ('Lost')
+        ${excludeClause}
+    `, params);
+
+    // Leads booked via meeting_datetime (Type1 flow) — convert to IST
+    const r2 = await query(`
+      SELECT TO_CHAR(meeting_datetime AT TIME ZONE 'Asia/Kolkata', 'HH24:MI') AS t
+      FROM "Leads"
+      WHERE DATE(meeting_datetime AT TIME ZONE 'Asia/Kolkata') = @date::date
+        AND meeting_datetime IS NOT NULL
+        AND status NOT IN ('Lost')
+        ${excludeClause}
+    `, params);
+
+    const booked = [...r1.recordset, ...r2.recordset]
+      .map(r => r.t)
+      .filter(Boolean);
+
+    res.json({ date, booked });
+  } catch (err) {
+    logger.error('slots/booked error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /* ── GET /slots/check ─────────────────────────────────────── */
 router.get('/slots/check', async (req, res) => {
   try {

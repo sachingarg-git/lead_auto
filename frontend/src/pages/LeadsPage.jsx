@@ -297,7 +297,7 @@ export default function LeadsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/70">
-                {['Lead','Company','Contact','Industry','Slot','Source','Status','Date','Actions'].map(h => (
+                {['Lead','Company','Contact','Industry','Slot','Meet','Source','Status','Date','Actions'].map(h => (
                   <th key={h}
                     className="px-4 py-3 text-[10px] font-bold text-slate-500
                                uppercase tracking-[0.1em] text-left whitespace-nowrap">
@@ -594,6 +594,26 @@ function LeadRow({ lead, users, onFollowUp, onDelete, onAssigned, onEmail, onWha
       <td className="px-4 py-3">
         <SlotCell slotDate={lead.slot_date} slotTime={lead.slot_time}
           preferred={lead.preferred_slot} meetingDatetime={lead.meeting_datetime} />
+      </td>
+
+      {/* Google Meet Link */}
+      <td className="px-4 py-3 text-center">
+        {lead.meeting_link ? (
+          <a
+            href={lead.meeting_link}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={`Join Meet: ${lead.meeting_link}`}
+            onClick={e => e.stopPropagation()}
+            className="inline-flex items-center justify-center w-8 h-8 rounded-lg
+                       bg-sky-50 border border-sky-200 text-sky-600 hover:bg-sky-100
+                       hover:border-sky-400 transition-all"
+          >
+            🎥
+          </a>
+        ) : (
+          <span className="text-slate-200 text-lg" title="No Meet link">—</span>
+        )}
       </td>
 
       {/* Source */}

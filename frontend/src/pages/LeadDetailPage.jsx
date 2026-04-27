@@ -74,6 +74,11 @@ export default function LeadDetailPage() {
   const [sendingEmail,     setSendingEmail]     = useState(false);
   const [loadingPreview,   setLoadingPreview]   = useState(false);
 
+  const [slotDate,       setSlotDate]       = useState('');
+  const [bookedSlots,    setBookedSlots]     = useState([]);
+  const [loadingSlots,   setLoadingSlots]    = useState(false);
+  const [settingSlot,    setSettingSlot]     = useState(false);
+
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
@@ -155,6 +160,39 @@ export default function LeadDetailPage() {
     } catch (err) {
       toast.error(err?.response?.data?.error || 'Failed to send email');
     } finally { setSendingEmail(false); }
+  }
+
+  const SLOT_HOURS = ['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00'];
+  const SLOT_LABELS = {
+    '09:00':'9:00 AM','10:00':'10:00 AM','11:00':'11:00 AM','12:00':'12:00 PM',
+    '13:00':'1:00 PM','14:00':'2:00 PM','15:00':'3:00 PM','16:00':'4:00 PM',
+    '17:00':'5:00 PM','18:00':'6:00 PM',
+  };
+
+  async function handleSlotDateChange(date) {
+    setSlotDate(date);
+    setBookedSlots([]);
+    if (!date) return;
+    setLoadingSlots(true);
+    try {
+      const r = await meetingsApi.getBookedSlots(date, lead.id);
+      setBookedSlots(r.data.booked || []);
+    } catch {}
+    finally { setLoadingSlots(false); }
+  }
+
+  async function handleBookSlot(time) {
+    if (!slotDate) return;
+    setSettingSlot(time);
+    try {
+      const r = await leadsApi.setSlot(lead.id, { slot_date: slotDate, slot_time: time });
+      setLead(r.data);
+      toast.success(`Slot set: ${slotDate} at ${SLOT_LABELS[time] || time}`);
+      setSlotDate('');
+      setBookedSlots([]);
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Failed to set slot');
+    } finally { setSettingSlot(false); }
   }
 
   async function handleMeetingBooked(datetime) {
@@ -262,38 +300,88 @@ export default function LeadDetailPage() {
             </div>
           </div>
 
-          {/* ── Google Meet / Slot Card ──────────────────── */}
-          {lead.slot_date && (
-            <div className="bg-white rounded-2xl border border-sky-200 p-5"
-                 style={{ boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
-              <h3 className="text-sm font-semibold text-sky-700 mb-3 flex items-center gap-1.5">
-                🗓️ Booked Appointment
-              </h3>
-              <div className="grid grid-cols-2 gap-3 mb-4">
-                <div>
-                  <div className="text-xs text-slate-500 mb-1">Date</div>
-                  <div className="text-sm font-semibold text-slate-700">{lead.slot_date}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-slate-500 mb-1">Time (IST)</div>
-                  <div className="text-sm font-semibold text-slate-700">{lead.slot_time || '—'}</div>
+          {/* ── Slot Appointment + Picker Card ───────────── */}
+          <div className="bg-white rounded-2xl border border-sky-200 p-5"
+               style={{ boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
+            <h3 className="text-sm font-semibold text-sky-700 mb-3 flex items-center gap-1.5">
+              🗓️ Slot Appointment
+            </h3>
+
+            {/* Current booked slot */}
+            {lead.slot_date ? (
+              <div className="mb-4 p-3 bg-sky-50 rounded-xl border border-sky-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs text-sky-600 font-medium mb-1">Booked Slot</div>
+                    <div className="text-sm font-bold text-slate-800">
+                      📅 {lead.slot_date} &nbsp;⏰ {lead.slot_time || '—'} IST
+                    </div>
+                  </div>
+                  {lead.meeting_link ? (
+                    <a href={lead.meeting_link} target="_blank" rel="noopener noreferrer"
+                       className="inline-flex items-center gap-1.5 bg-sky-600 hover:bg-sky-700
+                                  text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors">
+                      🎥 Join Meet
+                    </a>
+                  ) : (
+                    <span className="text-xs text-slate-400 italic">Meet link pending</span>
+                  )}
                 </div>
               </div>
-              {lead.meeting_link ? (
-                <a
-                  href={lead.meeting_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white
-                             text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors"
-                >
-                  🎥 Join Google Meet
-                </a>
-              ) : (
-                <p className="text-xs text-slate-400 italic">Google Meet link not yet generated</p>
-              )}
-            </div>
-          )}
+            ) : (
+              <p className="text-xs text-slate-400 italic mb-4">No slot booked yet</p>
+            )}
+
+            {/* Slot picker — only for users with write permission */}
+            {can('leads:write') && (
+              <div>
+                <div className="text-xs font-semibold text-slate-600 mb-2">
+                  {lead.slot_date ? '🔄 Reschedule Slot' : '➕ Book a Slot'}
+                </div>
+                <input
+                  type="date"
+                  value={slotDate}
+                  min={new Date().toISOString().substring(0, 10)}
+                  onChange={e => handleSlotDateChange(e.target.value)}
+                  className="input text-sm w-full mb-3"
+                />
+                {slotDate && (
+                  <div>
+                    {loadingSlots ? (
+                      <p className="text-xs text-slate-400 py-2">Loading available slots…</p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2">
+                        {SLOT_HOURS.map(h => {
+                          const isBooked = bookedSlots.includes(h);
+                          const isCurrentSlot = lead.slot_date === slotDate && lead.slot_time === h;
+                          const isSetting = settingSlot === h;
+                          return (
+                            <button
+                              key={h}
+                              disabled={isBooked || isSetting}
+                              onClick={() => !isBooked && handleBookSlot(h)}
+                              className={`text-xs font-semibold py-2 px-3 rounded-lg border transition-all ${
+                                isCurrentSlot
+                                  ? 'bg-sky-100 border-sky-400 text-sky-700 ring-2 ring-sky-300'
+                                  : isBooked
+                                  ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed line-through'
+                                  : isSetting
+                                  ? 'bg-sky-200 border-sky-400 text-sky-700 cursor-wait'
+                                  : 'bg-white border-slate-200 text-slate-700 hover:bg-sky-50 hover:border-sky-400 hover:text-sky-700 cursor-pointer'
+                              }`}
+                            >
+                              {isSetting ? '⏳' : isBooked ? '🔒' : '✓'} {SLOT_LABELS[h]}
+                              {isBooked && !isCurrentSlot && <span className="block text-[10px] font-normal">Booked</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* ── Meeting Card (Type1) ──────────────────────── */}
           {lead.client_type === 'Type1' && lead.meeting_datetime && (
@@ -343,20 +431,6 @@ export default function LeadDetailPage() {
                   </div>
                 )}
               </div>
-            </div>
-          )}
-
-          {/* ── Book Meeting (Type2) ──────────────────────── */}
-          {lead.client_type === 'Type2' && can('leads:write') && (
-            <div className="bg-white rounded-2xl border border-violet-200 p-5"
-                 style={{ boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
-              <h3 className="text-sm font-semibold text-violet-700 mb-2">{t('leadDetail.bookMeeting')}</h3>
-              <p className="text-xs text-slate-700 mb-3">{t('leadDetail.bookMeetingDesc')}</p>
-              <input
-                type="datetime-local"
-                className="input text-sm"
-                onChange={e => e.target.value && handleMeetingBooked(e.target.value)}
-              />
             </div>
           )}
 
