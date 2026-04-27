@@ -13,6 +13,7 @@ const { getPool } = require('./config/database');
 const { startReminderWorker } = require('./jobs/reminderWorker');
 const { startFollowUpWorker } = require('./jobs/followUpWorker');
 const { startExternalSyncScheduler } = require('./services/externalDbSync');
+const { initTelegramBot } = require('./services/telegramBot');
 
 // Routes
 const authRoutes = require('./routes/auth');
@@ -317,6 +318,7 @@ async function start() {
     startReminderWorker();
     startFollowUpWorker();
     startExternalSyncScheduler();
+    initTelegramBot();
     logger.info('Background workers started');
 
     // ── Auto-heal: generate Meet links for any slotted leads that missed them ──
