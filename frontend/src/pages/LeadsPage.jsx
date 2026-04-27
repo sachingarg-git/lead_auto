@@ -102,9 +102,9 @@ export default function LeadsPage() {
   const [deleteId,    setDeleteId]    = useState(null);
   const [sendModal,   setSendModal]   = useState(null); // { lead, channel: 'email'|'whatsapp' }
 
-  // Filters — including followup_date for Today / This Week cards
+  // Filters — including followup_date and slot_date for card filters
   const [filters, setFilters] = useState({
-    status: '', source: '', client_type: '', search: '', followup_date: '',
+    status: '', source: '', client_type: '', search: '', followup_date: '', slot_date: '',
   });
 
   const loadLeads = useCallback(async () => {
@@ -151,16 +151,23 @@ export default function LeadsPage() {
   }
 
   function toggleFollowupDate(d) {
-    setFilters(f => ({ ...f, followup_date: f.followup_date === d ? '' : d, status: '' }));
+    setFilters(f => ({ ...f, followup_date: f.followup_date === d ? '' : d, status: '', slot_date: '' }));
+    setPage(1);
+  }
+
+  function toggleSlotDate(d) {
+    setFilters(f => ({ ...f, slot_date: f.slot_date === d ? '' : d, status: '', followup_date: '' }));
     setPage(1);
   }
 
   function clearAll() {
-    setFilters({ status: '', source: '', client_type: '', search: '', followup_date: '' });
+    setFilters({ status: '', source: '', client_type: '', search: '', followup_date: '', slot_date: '' });
     setPage(1);
   }
 
   const activeFilters = Object.values(filters).filter(Boolean).length;
+  // slot_date is passed to backend API
+
 
   async function handleDelete(id) {
     try {
@@ -196,8 +203,8 @@ export default function LeadsPage() {
         })}
       </div>
 
-      {/* ── FollowUp Date Cards ───────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* ── Date Filter Cards — FollowUp + Scheduled Meetings ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <DateCard
           label="Today's FollowUp"
           sub="Leads due for follow-up today"
@@ -224,6 +231,40 @@ export default function LeadsPage() {
           icon={
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
               d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+          }
+        />
+        {/* ── Today's Scheduled Meetings ── */}
+        <DateCard
+          label="Today's Meetings"
+          sub="Slots scheduled for today"
+          count={stats.today_meetings ?? 0}
+          accent="#0891b2"
+          light="#ecfeff"
+          textColor="#155e75"
+          active={filters.slot_date === 'today'}
+          onClick={() => toggleSlotDate('today')}
+          icon={
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+              d="M15 10l4.553-2.069A1 1 0 0121 8.82V15.18a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+          }
+        />
+        {/* ── Tomorrow's Scheduled Meetings ── */}
+        <DateCard
+          label="Tomorrow's Meetings"
+          sub="Slots scheduled for tomorrow"
+          count={stats.tomorrow_meetings ?? 0}
+          accent="#10b981"
+          light="#ecfdf5"
+          textColor="#065f46"
+          active={filters.slot_date === 'tomorrow'}
+          onClick={() => toggleSlotDate('tomorrow')}
+          icon={
+            <>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                d="M15 10l4.553-2.069A1 1 0 0121 8.82V15.18a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                d="M12 8v4l2 2"/>
+            </>
           }
         />
       </div>

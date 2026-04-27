@@ -67,7 +67,7 @@ const Lead = {
     return result.recordset[0] || null;
   },
 
-  async findAll({ status, source, assigned_to, client_type, search, followup_date, page = 1, limit = 20 }) {
+  async findAll({ status, source, assigned_to, client_type, search, followup_date, slot_date, page = 1, limit = 20 }) {
     const offset = (page - 1) * limit;
     const params = { offset, limit };
 
@@ -106,6 +106,13 @@ const Lead = {
     } else if (followup_date === 'week') {
       where += ` AND lf.next_followup_date >= DATE_TRUNC('week', NOW())::date
                  AND lf.next_followup_date <  (DATE_TRUNC('week', NOW()) + INTERVAL '7 days')::date`;
+    }
+
+    // ── Slot date filter for "Today's Meetings" / "Tomorrow's Meetings" cards ──
+    if (slot_date === 'today') {
+      where += ` AND l.slot_date = CURRENT_DATE`;
+    } else if (slot_date === 'tomorrow') {
+      where += ` AND l.slot_date = CURRENT_DATE + INTERVAL '1 day'`;
     }
 
     const countRes = await query(`SELECT COUNT(*) AS total ${fromClause} ${where}`, params);
@@ -225,10 +232,21 @@ const Lead = {
       FROM LatestFU WHERE rn = 1
     `);
 
+    // ── Slot-based meeting counts ────────────────────────────────
+    const slotResult = await query(`
+      SELECT
+        SUM(CASE WHEN slot_date = CURRENT_DATE                        THEN 1 ELSE 0 END) AS today_meetings,
+        SUM(CASE WHEN slot_date = CURRENT_DATE + INTERVAL '1 day'    THEN 1 ELSE 0 END) AS tomorrow_meetings
+      FROM "Leads"
+      WHERE slot_date IS NOT NULL AND status NOT IN ('Lost')
+    `);
+
     return {
       ...result.recordset[0],
-      today_followups: parseInt(fuResult.recordset[0]?.today_followups, 10) || 0,
-      week_followups:  parseInt(fuResult.recordset[0]?.week_followups,  10) || 0,
+      today_followups:    parseInt(fuResult.recordset[0]?.today_followups,  10) || 0,
+      week_followups:     parseInt(fuResult.recordset[0]?.week_followups,   10) || 0,
+      today_meetings:     parseInt(slotResult.recordset[0]?.today_meetings,    10) || 0,
+      tomorrow_meetings:  parseInt(slotResult.recordset[0]?.tomorrow_meetings, 10) || 0,
     };
   },
 
