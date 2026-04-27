@@ -117,6 +117,26 @@ async function runStartupMigrations(pool) {
     await pool.query(`ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS pin_enabled BOOLEAN NOT NULL DEFAULT FALSE`);
     // avatar_url — optional profile picture
     await pool.query(`ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS avatar_url VARCHAR(500) NULL`);
+
+    // EmailTemplates
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "EmailTemplates" (
+        id          SERIAL PRIMARY KEY,
+        name        VARCHAR(200)  NOT NULL,
+        subject     VARCHAR(500)  NOT NULL DEFAULT '',
+        body        TEXT          NOT NULL DEFAULT '',
+        is_default  BOOLEAN       NOT NULL DEFAULT false,
+        created_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+        updated_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+      )
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "SourceTemplateMap" (
+        source       VARCHAR(150) PRIMARY KEY,
+        template_id  INTEGER REFERENCES "EmailTemplates"(id) ON DELETE SET NULL
+      )
+    `);
+
     logger.info('Startup migrations: Users 2FA columns verified');
   } catch (err) {
     logger.warn('Startup migration warning (non-fatal):', err.message);

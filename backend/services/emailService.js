@@ -167,13 +167,39 @@ async function testEmail(to) {
 
 async function buildWelcomeEmail(lead) {
   const companyName = await getCompanyName();
-  let subject, body;
+  let subject = '', body = '';
 
   try {
-    const Settings = require('../models/Settings');
-    subject = await Settings.get('email_welcome_subject') || '';
-    body    = await Settings.get('email_welcome_body') || '';
-  } catch {}
+    const { getPool } = require('../config/database');
+    const pool = await getPool();
+
+    // 1. Source-linked template
+    if (lead.source) {
+      const r = await pool.query(`
+        SELECT t.subject, t.body FROM "SourceTemplateMap" s
+        JOIN "EmailTemplates" t ON t.id = s.template_id
+        WHERE s.source = $1
+      `, [lead.source]);
+      if (r.rows.length) { subject = r.rows[0].subject; body = r.rows[0].body; }
+    }
+
+    // 2. Default template
+    if (!subject) {
+      const r = await pool.query(`SELECT subject, body FROM "EmailTemplates" WHERE is_default=true LIMIT 1`);
+      if (r.rows.length) { subject = r.rows[0].subject; body = r.rows[0].body; }
+    }
+  } catch (err) {
+    logger.warn('buildWelcomeEmail template lookup failed:', err.message);
+  }
+
+  // 3. AppSettings fallback (existing behaviour)
+  if (!subject) {
+    try {
+      const Settings = require('../models/Settings');
+      subject = await Settings.get('email_welcome_subject') || '';
+      body    = await Settings.get('email_welcome_body') || '';
+    } catch {}
+  }
 
   const vars = {
     full_name:    lead.full_name    || '',
@@ -183,12 +209,12 @@ async function buildWelcomeEmail(lead) {
     company_name: companyName,
     slot_date:    formatSlotDate(lead.slot_date),
     slot_time:    formatSlotTime(lead.slot_time),
+    meet_link:    lead.meeting_link || '',
   };
 
   if (subject && body) {
     const renderedSubject = renderTemplate(subject, vars);
     const renderedBody    = renderTemplate(body, vars);
-    // Convert plain text to simple HTML
     const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px;background:#f9fafb;border-radius:8px">
       <div style="background:#0891b2;padding:20px 24px;border-radius:8px 8px 0 0">
         <h2 style="color:#fff;margin:0;font-size:20px">${companyName}</h2>
@@ -208,6 +234,7 @@ async function buildWelcomeEmail(lead) {
       <h2>Hi ${lead.full_name},</h2>
       <p>Thank you for reaching out to <strong>${companyName}</strong>. We will contact you shortly!</p>
       ${lead.slot_date ? `<p>📅 Your appointment: <strong>${formatSlotDate(lead.slot_date)}${lead.slot_time ? ' at ' + formatSlotTime(lead.slot_time) : ''}</strong></p>` : ''}
+      ${lead.meeting_link ? `<p><a href="${lead.meeting_link}" style="display:inline-block;background:#0891b2;color:#ffffff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:14px">🎥 Join Google Meet</a></p>` : ''}
       <p>Best regards,<br>${companyName} Team</p>
     </div>`,
   };
@@ -291,5 +318,5 @@ async function buildRescheduleEmail(lead, { newDate, newTime, reason, type } = {
 module.exports = {
   sendEmail, testEmail, resetTransporter,
   buildWelcomeEmail, buildMeetingReminderEmail, buildFollowUpEmail,
-  buildRescheduleEmail, formatSlotDate, formatSlotTime,
+  buildRescheduleEmail, formatSlotDate, formatSlotTime, renderTemplate,
 };

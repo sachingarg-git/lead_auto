@@ -103,6 +103,18 @@ export const settingsApi = {
   testEmail: (to)   => api.post('/settings/test-email', { to }),
 };
 
+// ── Email Templates ───────────────────────────────────────────
+export const emailTemplatesApi = {
+  getAll:       ()         => api.get('/settings/email-templates'),
+  create:       (data)     => api.post('/settings/email-templates', data),
+  update:       (id, data) => api.put(`/settings/email-templates/${id}`, data),
+  delete:       (id)       => api.delete(`/settings/email-templates/${id}`),
+  preview:      (id)       => api.get(`/settings/email-templates/${id}/preview`),
+  getSourceMap: ()         => api.get('/settings/source-template-map'),
+  setSourceMap: (data)     => api.put('/settings/source-template-map', data),
+  sendToLead:   (data)     => api.post('/settings/send-template-email', data),
+};
+
 // ── Reminders ─────────────────────────────────────────────────
 export const remindersApi = {
   getForLead: (leadId) => api.get(`/reminders/lead/${leadId}`),

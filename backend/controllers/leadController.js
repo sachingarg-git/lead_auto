@@ -1,9 +1,10 @@
 const Lead = require('../models/Lead');
 const FollowUp = require('../models/FollowUp');
-const { query } = require('../config/database');
+const { query, getPool } = require('../config/database');
 const { scheduleRemindersForLead } = require('../jobs/reminderScheduler');
 const { scheduleFollowUpForLead } = require('../jobs/followUpScheduler');
 const { sendWelcomeMessages, sendManualEmail, sendManualWhatsApp } = require('../services/communicationService');
+const { createMeetLink } = require('../services/googleMeetService');
 const logger = require('../config/logger');
 
 // ── Field labels for readable activity log ────────────────────
@@ -396,6 +397,27 @@ async function deleteLead(req, res) {
 // ── Internal helper ─────────────────────────────────────────
 async function triggerLeadAutomation(lead) {
   try {
+    // ── Auto-create Google Meet link when a slot is booked ──
+    if (lead.slot_date && lead.slot_time && !lead.meeting_link) {
+      try {
+        const meetLink = await createMeetLink({
+          title        : `Wizone AI Demo — ${lead.full_name}`,
+          slotDate     : lead.slot_date,
+          slotTime     : lead.slot_time,
+          durationMins : 60,
+          attendeeEmail: lead.email || undefined,
+        });
+        if (meetLink) {
+          const pool = await getPool();
+          await pool.query(`UPDATE "Leads" SET meeting_link=$1 WHERE id=$2`, [meetLink, lead.id]);
+          lead.meeting_link = meetLink; // make available to email builder
+          logger.info(`[Automation] Meet link saved for lead ${lead.id}: ${meetLink}`);
+        }
+      } catch (meetErr) {
+        logger.warn(`[Automation] Meet link creation skipped for lead ${lead.id}:`, meetErr.message);
+      }
+    }
+
     await sendWelcomeMessages(lead);
     if (lead.client_type === 'Type1' && lead.meeting_datetime) {
       await scheduleRemindersForLead(lead);

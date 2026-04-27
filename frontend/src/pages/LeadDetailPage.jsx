@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { leadsApi, remindersApi, usersApi, meetingsApi } from '../services/api';
+import { leadsApi, remindersApi, usersApi, meetingsApi, emailTemplatesApi } from '../services/api';
 import StatusBadge from '../components/shared/StatusBadge';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -57,14 +57,22 @@ export default function LeadDetailPage() {
   const { can }  = useAuth();
   const { t }    = useTranslation();
 
-  const [lead,       setLead]       = useState(null);
-  const [reminders,  setReminders]  = useState([]);
-  const [reschedules,setReschedules]= useState([]);
-  const [users,      setUsers]      = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [saving,     setSaving]     = useState(false);
-  const [editNotes,  setEditNotes]  = useState(false);
-  const [notes,      setNotes]      = useState('');
+  const [lead,          setLead]          = useState(null);
+  const [reminders,     setReminders]     = useState([]);
+  const [reschedules,   setReschedules]   = useState([]);
+  const [users,         setUsers]         = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [saving,        setSaving]        = useState(false);
+  const [editNotes,     setEditNotes]     = useState(false);
+  const [notes,         setNotes]         = useState('');
+
+  // ── Email template send ───────────────────────────────────
+  const [showEmailModal,   setShowEmailModal]   = useState(false);
+  const [emailTemplates,   setEmailTemplates]   = useState([]);
+  const [selectedTplId,    setSelectedTplId]    = useState('');
+  const [emailPreview,     setEmailPreview]     = useState(null);
+  const [sendingEmail,     setSendingEmail]     = useState(false);
+  const [loadingPreview,   setLoadingPreview]   = useState(false);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -113,6 +121,40 @@ export default function LeadDetailPage() {
       setEditNotes(false);
       toast.success('Notes saved');
     } catch {} finally { setSaving(false); }
+  }
+
+  async function openEmailModal() {
+    setShowEmailModal(true);
+    setSelectedTplId('');
+    setEmailPreview(null);
+    try {
+      const r = await emailTemplatesApi.getAll();
+      setEmailTemplates(r.data);
+    } catch { toast.error('Failed to load templates'); }
+  }
+
+  async function handleTemplateSelect(id) {
+    setSelectedTplId(id);
+    setEmailPreview(null);
+    if (!id) return;
+    setLoadingPreview(true);
+    try {
+      const r = await emailTemplatesApi.preview(id);
+      setEmailPreview(r.data);
+    } catch { toast.error('Failed to load preview'); }
+    finally { setLoadingPreview(false); }
+  }
+
+  async function handleSendTemplateEmail() {
+    if (!selectedTplId) { toast.error('Select a template first'); return; }
+    setSendingEmail(true);
+    try {
+      const r = await emailTemplatesApi.sendToLead({ lead_id: lead.id, template_id: parseInt(selectedTplId) });
+      toast.success(`Email sent to ${r.data.sent_to}`);
+      setShowEmailModal(false);
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Failed to send email');
+    } finally { setSendingEmail(false); }
   }
 
   async function handleMeetingBooked(datetime) {
@@ -219,6 +261,39 @@ export default function LeadDetailPage() {
               ))}
             </div>
           </div>
+
+          {/* ── Google Meet / Slot Card ──────────────────── */}
+          {lead.slot_date && (
+            <div className="bg-white rounded-2xl border border-sky-200 p-5"
+                 style={{ boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
+              <h3 className="text-sm font-semibold text-sky-700 mb-3 flex items-center gap-1.5">
+                🗓️ Booked Appointment
+              </h3>
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div>
+                  <div className="text-xs text-slate-500 mb-1">Date</div>
+                  <div className="text-sm font-semibold text-slate-700">{lead.slot_date}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-slate-500 mb-1">Time (IST)</div>
+                  <div className="text-sm font-semibold text-slate-700">{lead.slot_time || '—'}</div>
+                </div>
+              </div>
+              {lead.meeting_link ? (
+                <a
+                  href={lead.meeting_link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white
+                             text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors"
+                >
+                  🎥 Join Google Meet
+                </a>
+              ) : (
+                <p className="text-xs text-slate-400 italic">Google Meet link not yet generated</p>
+              )}
+            </div>
+          )}
 
           {/* ── Meeting Card (Type1) ──────────────────────── */}
           {lead.client_type === 'Type1' && lead.meeting_datetime && (
@@ -514,8 +589,91 @@ export default function LeadDetailPage() {
               </div>
             </div>
           </div>
+
+          {/* Manual email send */}
+          {can('leads:write') && lead.email && (
+            <div className="bg-white rounded-2xl border border-slate-200 p-4"
+                 style={{ boxShadow: '0 2px 8px rgba(0,0,0,.06)' }}>
+              <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
+                Send Email
+              </h3>
+              <p className="text-xs text-slate-500 mb-3">Manually send a template email to this lead.</p>
+              <button onClick={openEmailModal}
+                className="w-full h-9 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-bold
+                           flex items-center justify-center gap-2 transition-all">
+                📧 Send Template Email
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* ── Email Template Send Modal ─────────────────────── */}
+      {showEmailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div>
+                <h3 className="font-bold text-slate-800 text-base">Send Email to {lead.full_name}</h3>
+                <p className="text-xs text-slate-400 mt-0.5">{lead.email}</p>
+              </div>
+              <button onClick={() => setShowEmailModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+            </div>
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1.5">
+                  Select Template
+                </label>
+                <select value={selectedTplId} onChange={e => handleTemplateSelect(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-brand-400 transition-colors">
+                  <option value="">— Choose a template —</option>
+                  {emailTemplates.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}{t.is_default ? ' (Default)' : ''}</option>
+                  ))}
+                </select>
+                {emailTemplates.length === 0 && (
+                  <p className="text-xs text-slate-400 mt-1.5">No templates found. Create templates in Settings → Email Templates.</p>
+                )}
+              </div>
+
+              {loadingPreview && (
+                <div className="flex items-center justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+
+              {emailPreview && !loadingPreview && (
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Subject: </span>
+                    <span className="text-sm text-slate-700">{emailPreview.subject}</span>
+                  </div>
+                  <div className="p-4 max-h-60 overflow-y-auto">
+                    <div dangerouslySetInnerHTML={{ __html: emailPreview.html }} />
+                  </div>
+                  <div className="px-4 py-2 bg-amber-50 border-t border-amber-100">
+                    <p className="text-[10px] text-amber-600">Preview uses sample data. Actual email will use this lead's real details.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100 flex gap-3">
+              <button onClick={() => setShowEmailModal(false)}
+                className="flex-1 h-10 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition-all">
+                Cancel
+              </button>
+              <button onClick={handleSendTemplateEmail} disabled={!selectedTplId || sendingEmail}
+                className="flex-1 h-10 rounded-xl bg-brand-500 text-white text-sm font-bold hover:bg-brand-600
+                           disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2">
+                {sendingEmail
+                  ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Sending…</>
+                  : '📧 Send Email'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

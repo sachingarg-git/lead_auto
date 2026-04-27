@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import toast from 'react-hot-toast';
-import { settingsApi } from '../services/api';
+import { settingsApi, emailTemplatesApi } from '../services/api';
 
 const VARS = [
   { v: '{{full_name}}',    label: 'Lead Name'    },
@@ -36,6 +36,17 @@ export default function SettingsPage() {
   const [testingEmail, setTestingEmail] = useState(false);
   const [section,      setSection]      = useState('gmail');
 
+  // ── Email Templates state ─────────────────────────────────
+  const [templates,        setTemplates]        = useState([]);
+  const [sourceMap,        setSourceMap]        = useState([]);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [showEditor,       setShowEditor]       = useState(false);
+  const [editForm,         setEditForm]         = useState({ name: '', subject: '', body: '', is_default: false });
+  const [editSaving,       setEditSaving]       = useState(false);
+  const [previewData,      setPreviewData]      = useState(null);
+  const [newSourceInput,   setNewSourceInput]   = useState('');
+  const [newSourceTemplate,setNewSourceTemplate]= useState('');
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const tog = k => setForm(f => ({ ...f, [k]: f[k] === 'true' ? 'false' : 'true' }));
 
@@ -51,6 +62,21 @@ export default function SettingsPage() {
       .catch(() => toast.error('Failed to load settings'))
       .finally(() => setLoading(false));
   }, []);
+
+  const loadTemplates = useCallback(async () => {
+    try {
+      const [tRes, mRes] = await Promise.all([
+        emailTemplatesApi.getAll(),
+        emailTemplatesApi.getSourceMap(),
+      ]);
+      setTemplates(tRes.data);
+      setSourceMap(mRes.data);
+    } catch { toast.error('Failed to load email templates'); }
+  }, []);
+
+  useEffect(() => {
+    if (section === 'templates') loadTemplates();
+  }, [section, loadTemplates]);
 
   async function handleSave(e) {
     e.preventDefault();
@@ -75,6 +101,62 @@ export default function SettingsPage() {
 
   const insertVar = (field, v) => setForm(f => ({ ...f, [field]: (f[field] || '') + v }));
 
+  // ── Template handlers ─────────────────────────────────────
+  async function handleSaveTemplate() {
+    if (!editForm.name.trim()) { toast.error('Template name is required'); return; }
+    setEditSaving(true);
+    try {
+      if (selectedTemplate) {
+        await emailTemplatesApi.update(selectedTemplate.id, editForm);
+        toast.success('Template updated');
+      } else {
+        await emailTemplatesApi.create(editForm);
+        toast.success('Template created');
+      }
+      setShowEditor(false);
+      setSelectedTemplate(null);
+      await loadTemplates();
+    } catch { toast.error('Failed to save template'); }
+    finally { setEditSaving(false); }
+  }
+
+  async function handleDeleteTemplate(id) {
+    if (!window.confirm('Delete this template?')) return;
+    try {
+      await emailTemplatesApi.delete(id);
+      toast.success('Template deleted');
+      await loadTemplates();
+    } catch { toast.error('Failed to delete template'); }
+  }
+
+  async function handlePreview(id) {
+    try {
+      const r = await emailTemplatesApi.preview(id);
+      setPreviewData(r.data);
+    } catch { toast.error('Failed to load preview'); }
+  }
+
+  async function handleSaveSourceMap() {
+    if (!newSourceInput.trim()) { toast.error('Enter a source name'); return; }
+    try {
+      await emailTemplatesApi.setSourceMap({ source: newSourceInput.trim(), template_id: newSourceTemplate || null });
+      toast.success('Source mapping saved');
+      setNewSourceInput('');
+      setNewSourceTemplate('');
+      await loadTemplates();
+    } catch { toast.error('Failed to save mapping'); }
+  }
+
+  async function handleRemoveSourceMap(source) {
+    try {
+      await emailTemplatesApi.setSourceMap({ source, template_id: null });
+      toast.success('Mapping removed');
+      await loadTemplates();
+    } catch { toast.error('Failed to remove mapping'); }
+  }
+
+  const insertEditVar = (v) => setEditForm(f => ({ ...f, body: (f.body || '') + v }));
+
   if (loading) return (
     <div className="flex items-center justify-center py-32">
       <div className="w-8 h-8 rounded-full border-2 border-brand-500 border-t-transparent animate-spin" />
@@ -87,7 +169,7 @@ export default function SettingsPage() {
   const NAV = [
     { id: 'gmail',     label: 'Gmail / Email',    dot: smtpOn     },
     { id: 'whatsapp',  label: 'WhatsApp',          dot: interaktOn },
-    { id: 'templates', label: 'Message Templates', dot: false      },
+    { id: 'templates', label: 'Email Templates',   dot: templates.length > 0 },
     { id: 'company',   label: 'Company Info',      dot: false      },
     { id: 'language',  label: 'Language',          dot: false      },
   ];
@@ -234,87 +316,105 @@ export default function SettingsPage() {
               </SettingCard>
             )}
 
-            {/* ── Templates ── */}
+            {/* ── Email Templates ── */}
             {section === 'templates' && (
-              <>
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
-                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
-                    Available Variables — click to copy
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-6">
+                {/* Header + New Template button */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-slate-800">Email Templates</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">Create templates and link them to lead sources for automatic sending</p>
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {VARS.map(v => (
-                      <button type="button" key={v.v}
-                        onClick={() => { navigator.clipboard?.writeText(v.v); toast.success('Copied ' + v.v); }}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white border border-slate-200
-                                   text-[11px] font-mono text-brand-600 hover:bg-brand-50 hover:border-brand-300
-                                   transition-all cursor-copy">
-                        {v.v}
-                        <span className="text-slate-400 font-sans">{v.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-2">
-                    Conditional: <code className="bg-slate-200 px-1 rounded">{'{{#if slot_date}}...{{/if}}'}</code> — shown only when a slot is booked
-                  </p>
+                  <button type="button" onClick={() => { setSelectedTemplate(null); setEditForm({ name: '', subject: '', body: '', is_default: false }); setShowEditor(true); }}
+                    className="px-4 py-2 bg-brand-500 text-white text-sm font-bold rounded-xl hover:bg-brand-600 transition-all">
+                    + New Template
+                  </button>
                 </div>
 
-                <SettingCard title="Email Welcome Template"
-                  subtitle="Sent to every new lead that has an email address">
-                  <div className="space-y-3">
-                    <div>
-                      <Lbl>Subject Line</Lbl>
-                      <input className="input mt-1"
-                        placeholder="Welcome {{full_name}}! We received your enquiry"
-                        value={form.email_welcome_subject}
-                        onChange={e => set('email_welcome_subject', e.target.value)} />
-                    </div>
-                    <div>
-                      <Lbl>Body (plain text, supports variables)</Lbl>
-                      <textarea
-                        className="w-full mt-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl
-                                   text-[12px] font-mono text-slate-700 resize-y min-h-[150px] leading-relaxed
-                                   focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-400 transition-all"
-                        value={form.email_welcome_body}
-                        onChange={e => set('email_welcome_body', e.target.value)} />
-                      <VarBar field="email_welcome_body" onInsert={insertVar} />
-                    </div>
-                  </div>
-                </SettingCard>
-
-                <SettingCard title="WhatsApp Welcome Template"
-                  subtitle="Sent via Interakt to every new lead with a phone number">
-                  <div className="space-y-3">
-                    <div>
-                      <Lbl>Message Body</Lbl>
-                      <textarea
-                        className="w-full mt-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl
-                                   text-[12px] font-mono text-slate-700 resize-y min-h-[150px] leading-relaxed
-                                   focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-400 transition-all"
-                        value={form.whatsapp_welcome_template}
-                        onChange={e => set('whatsapp_welcome_template', e.target.value)} />
-                      <VarBar field="whatsapp_welcome_template" onInsert={insertVar} />
-                    </div>
-
-                    {form.whatsapp_welcome_template && (
-                      <div className="p-3.5 bg-emerald-50 border border-emerald-100 rounded-xl">
-                        <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wide mb-1.5">
-                          Live Preview (sample data)
+                {/* Template list */}
+                <div className="space-y-3">
+                  {templates.map(t => (
+                    <div key={t.id} className="border border-slate-200 rounded-xl p-4 flex items-start justify-between gap-4 hover:border-brand-300 transition-all">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-semibold text-slate-800 text-sm">{t.name}</span>
+                          {t.is_default && (
+                            <span className="px-2 py-0.5 bg-brand-100 text-brand-600 text-[10px] font-bold rounded-full">DEFAULT</span>
+                          )}
                         </div>
-                        <div className="text-[12px] text-slate-700 whitespace-pre-wrap leading-relaxed">
-                          {form.whatsapp_welcome_template
-                            .replace(/\{\{#if slot_date\}\}[\s\S]*?\{\{\/if\}\}/g, '[slot block — shown when booked]')
-                            .replace(/\{\{full_name\}\}/g,    'Rahul Sharma')
-                            .replace(/\{\{phone\}\}/g,         '9876543210')
-                            .replace(/\{\{company_name\}\}/g,  form.company_name || 'Wizone')
-                            .replace(/\{\{slot_date\}\}/g,     '25 Apr 2026')
-                            .replace(/\{\{slot_time\}\}/g,     '2:30 PM')
-                            .replace(/\{\{[\w]+\}\}/g,         '...')}
-                        </div>
+                        <div className="text-xs text-slate-400 truncate mb-2">{t.subject}</div>
+                        {t.linked_sources?.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {t.linked_sources.map(s => (
+                              <span key={s} className="px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] rounded-full">{s}</span>
+                            ))}
+                          </div>
+                        )}
                       </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button type="button" onClick={() => handlePreview(t.id)}
+                          className="px-3 py-1.5 text-xs border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-600 transition-all">
+                          Preview
+                        </button>
+                        <button type="button" onClick={() => { setSelectedTemplate(t); setEditForm({ name: t.name, subject: t.subject, body: t.body, is_default: t.is_default }); setShowEditor(true); }}
+                          className="px-3 py-1.5 text-xs border border-brand-200 rounded-lg hover:bg-brand-50 text-brand-600 transition-all">
+                          Edit
+                        </button>
+                        <button type="button" onClick={() => handleDeleteTemplate(t.id)}
+                          className="px-3 py-1.5 text-xs border border-red-200 rounded-lg hover:bg-red-50 text-red-500 transition-all">
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {templates.length === 0 && (
+                    <div className="text-center py-8 text-slate-400 text-sm">No templates yet. Create your first template above.</div>
+                  )}
+                </div>
+
+                {/* Source → Template mapping */}
+                <div className="border-t border-slate-100 pt-5">
+                  <h4 className="font-semibold text-slate-700 mb-1 text-sm">Source → Template Mapping</h4>
+                  <p className="text-xs text-slate-400 mb-3">When a lead arrives from a specific source, automatically use the linked template.</p>
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <input value={newSourceInput} onChange={e => setNewSourceInput(e.target.value)}
+                        placeholder="Source name (e.g. wizone.ai, landing2.wizone.ai)"
+                        className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-400 transition-colors" />
+                      <select value={newSourceTemplate} onChange={e => setNewSourceTemplate(e.target.value)}
+                        className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand-400 transition-colors">
+                        <option value="">No template</option>
+                        {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                      </select>
+                      <button type="button" onClick={handleSaveSourceMap}
+                        className="px-4 py-2 bg-brand-500 text-white text-sm font-bold rounded-lg hover:bg-brand-600 transition-all shrink-0">
+                        Link
+                      </button>
+                    </div>
+                    {sourceMap.map(m => (
+                      <div key={m.source} className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm font-medium text-slate-700">{m.source}</span>
+                          <span className="text-xs text-slate-400">→</span>
+                          <span className="text-sm text-brand-600 font-medium">{m.template_name || 'No template'}</span>
+                        </div>
+                        <button type="button" onClick={() => handleRemoveSourceMap(m.source)}
+                          className="text-red-400 hover:text-red-600 text-xs transition-colors">
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                    {sourceMap.length === 0 && (
+                      <div className="text-xs text-slate-400 text-center py-2">No source mappings yet.</div>
                     )}
                   </div>
-                </SettingCard>
-              </>
+                </div>
+
+                {/* Legacy fallback note */}
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[11px] text-amber-700">
+                  <strong>Fallback chain:</strong> Source-linked template → Default template → AppSettings (email_welcome_subject/body) → Built-in template
+                </div>
+              </div>
             )}
 
             {/* ── Company ── */}
@@ -381,6 +481,107 @@ export default function SettingsPage() {
           </div>
         </div>
       </form>
+
+      {/* ── Template Editor Modal ─────────────────────────── */}
+      {showEditor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h3 className="font-bold text-slate-800 text-base">
+                {selectedTemplate ? 'Edit Template' : 'New Email Template'}
+              </h3>
+              <button type="button" onClick={() => setShowEditor(false)}
+                className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+            </div>
+            <div className="p-6 space-y-4 overflow-y-auto flex-1">
+              {/* Variables bar */}
+              <div className="bg-slate-50 rounded-xl p-3">
+                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Variables — click to insert into body</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {VARS.map(v => (
+                    <button type="button" key={v.v} onClick={() => insertEditVar(v.v)}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white border border-slate-200
+                                 text-[11px] font-mono text-brand-600 hover:bg-brand-50 hover:border-brand-300 transition-all cursor-copy">
+                      {v.v}
+                      <span className="text-slate-400 font-sans text-[10px]">{v.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1.5">
+                  Conditional: <code className="bg-slate-200 px-1 rounded">{'{{#if slot_date}}...{{/if}}'}</code>
+                </p>
+              </div>
+
+              <div>
+                <Lbl>Template Name *</Lbl>
+                <input className="input mt-1" placeholder="e.g. Welcome — Wizone.ai"
+                  value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div>
+                <Lbl>Subject Line</Lbl>
+                <input className="input mt-1" placeholder="Welcome {{full_name}}! We received your enquiry"
+                  value={editForm.subject} onChange={e => setEditForm(f => ({ ...f, subject: e.target.value }))} />
+              </div>
+              <div>
+                <Lbl>Body (plain text, supports variables)</Lbl>
+                <textarea
+                  className="w-full mt-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl
+                             text-[12px] font-mono text-slate-700 resize-y min-h-[180px] leading-relaxed
+                             focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-400 transition-all"
+                  value={editForm.body} onChange={e => setEditForm(f => ({ ...f, body: e.target.value }))} />
+              </div>
+              <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                <input type="checkbox" checked={editForm.is_default}
+                  onChange={e => setEditForm(f => ({ ...f, is_default: e.target.checked }))}
+                  className="w-4 h-4 accent-brand-500 rounded" />
+                <span className="text-sm text-slate-700 font-medium">Set as default template</span>
+                <span className="text-[11px] text-slate-400">(used when no source mapping matches)</span>
+              </label>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100 flex gap-3">
+              <button type="button" onClick={() => setShowEditor(false)}
+                className="flex-1 h-10 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition-all">
+                Cancel
+              </button>
+              <button type="button" onClick={handleSaveTemplate} disabled={editSaving}
+                className="flex-1 h-10 rounded-xl bg-brand-500 text-white text-sm font-bold hover:bg-brand-600 transition-all flex items-center justify-center gap-2">
+                {editSaving
+                  ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Saving…</>
+                  : selectedTemplate ? 'Update Template' : 'Create Template'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Preview Modal ─────────────────────────────────── */}
+      {previewData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div>
+                <h3 className="font-bold text-slate-800 text-base">Email Preview</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Sample data: Rahul Sharma · rahul@example.com</p>
+              </div>
+              <button type="button" onClick={() => setPreviewData(null)}
+                className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+            </div>
+            <div className="px-6 py-3 bg-slate-50 border-b border-slate-100">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Subject: </span>
+              <span className="text-sm text-slate-700">{previewData.subject}</span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6">
+              <div dangerouslySetInnerHTML={{ __html: previewData.html }} />
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100">
+              <button type="button" onClick={() => setPreviewData(null)}
+                className="w-full h-10 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold hover:bg-slate-50 transition-all">
+                Close Preview
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
