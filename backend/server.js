@@ -137,6 +137,170 @@ async function runStartupMigrations(pool) {
       )
     `);
 
+    // MeetingRescheduleLog — stores history of every reschedule
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "MeetingRescheduleLog" (
+        id                    SERIAL PRIMARY KEY,
+        lead_id               INTEGER NOT NULL,
+        old_meeting_datetime  TIMESTAMPTZ,
+        old_slot_date         DATE,
+        old_slot_time         TIME,
+        new_meeting_datetime  TIMESTAMPTZ,
+        new_slot_date         DATE,
+        new_slot_time         TIME,
+        reschedule_reason     TEXT,
+        reschedule_type       VARCHAR(50),
+        rescheduled_by_id     INTEGER,
+        rescheduled_by_name   VARCHAR(200),
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    // ── Seed default templates (only if table is empty) ────────
+    const { rows: countRows } = await pool.query(`SELECT COUNT(*) AS cnt FROM "EmailTemplates"`);
+    if (parseInt(countRows[0].cnt) === 0) {
+      const templates = [
+        {
+          name      : '🎉 Welcome — Slot Booked',
+          subject   : 'Your Demo is Confirmed, {{full_name}}! 🎉',
+          body      :
+`Hi {{full_name}},
+
+Thank you for booking your Wizone AI demo! We're excited to show you what's possible.
+
+📅 Your Appointment
+Date: {{slot_date}}
+Time: {{slot_time}} IST
+
+{{#if meet_link}}
+🎥 Join your Google Meet session:
+{{meet_link}}
+{{/if}}
+
+Please keep this link handy and join 2–3 minutes before your session begins.
+
+If you need to reschedule or have any questions, just reply to this email.
+
+See you soon! 🚀
+{{company_name}} Team`,
+          is_default: true,
+        },
+        {
+          name      : '👋 Welcome — General Enquiry',
+          subject   : 'We received your enquiry, {{full_name}}!',
+          body      :
+`Hi {{full_name}},
+
+Thank you for reaching out to {{company_name}}! We've received your enquiry and our team will get back to you within 24 hours.
+
+{{#if company}}
+We look forward to learning more about {{company}} and how we can help.
+{{/if}}
+
+In the meantime, feel free to reply to this email with any questions.
+
+Warm regards,
+{{company_name}} Team`,
+          is_default: false,
+        },
+        {
+          name      : '🔔 Demo Reminder',
+          subject   : 'Reminder: Your Wizone AI Demo is Tomorrow, {{full_name}}',
+          body      :
+`Hi {{full_name}},
+
+Just a quick reminder that your Wizone AI demo is scheduled for:
+
+📅 Date: {{slot_date}}
+⏰ Time: {{slot_time}} IST
+
+{{#if meet_link}}
+🎥 Google Meet link:
+{{meet_link}}
+{{/if}}
+
+Tips for a great session:
+• Join 2 minutes early
+• Have a stable internet connection
+• Keep a notepad handy for questions
+
+We're looking forward to speaking with you!
+
+{{company_name}} Team`,
+          is_default: false,
+        },
+        {
+          name      : '📞 Follow-up — Day 1',
+          subject   : 'Following up on your enquiry, {{full_name}}',
+          body      :
+`Hi {{full_name}},
+
+We noticed you reached out to us recently and wanted to follow up personally.
+
+At {{company_name}}, we help businesses like yours automate lead management, track conversions, and close more deals — all from one place.
+
+Would you be open to a quick 15-minute call this week? We'd love to understand your needs and show you how we can help.
+
+Reply to this email or let us know a good time to connect.
+
+Best regards,
+{{company_name}} Team`,
+          is_default: false,
+        },
+        {
+          name      : '✅ Demo Done — Next Steps',
+          subject   : 'Great connecting with you, {{full_name}}! Here\'s what\'s next',
+          body      :
+`Hi {{full_name}},
+
+It was wonderful speaking with you today! We hope the demo gave you a clear picture of how {{company_name}} can transform your lead management process.
+
+Here's a quick recap of what we discussed:
+• Automated lead capture from multiple sources
+• Smart follow-up scheduling
+• Real-time pipeline tracking
+• WhatsApp & Email automation
+
+📌 Next Steps
+Our team will send you a detailed proposal within 24 hours. In the meantime, feel free to reply with any questions.
+
+We're excited about the possibility of working together!
+
+Warm regards,
+{{company_name}} Team`,
+          is_default: false,
+        },
+        {
+          name      : '💬 Nurture — Last Follow-up',
+          subject   : 'One last thought for you, {{full_name}}',
+          body      :
+`Hi {{full_name}},
+
+I know you're busy, so I'll keep this short.
+
+We've been helping businesses automate their sales pipeline and we'd love to do the same for you{{#if company}} at {{company}}{{/if}}.
+
+If the timing isn't right right now — no worries at all. Just reply with "later" and I'll check back in next quarter.
+
+But if you're still interested, I'm happy to schedule a quick 10-minute call at your convenience.
+
+Either way, wishing you a great week ahead!
+
+{{company_name}} Team`,
+          is_default: false,
+        },
+      ];
+
+      for (const tpl of templates) {
+        await pool.query(
+          `INSERT INTO "EmailTemplates" (name, subject, body, is_default) VALUES ($1, $2, $3, $4)`,
+          [tpl.name, tpl.subject, tpl.body, tpl.is_default]
+        );
+      }
+      logger.info(`Startup: seeded ${templates.length} default email templates`);
+    }
+    // ────────────────────────────────────────────────────────────
+
     logger.info('Startup migrations: Users 2FA columns verified');
   } catch (err) {
     logger.warn('Startup migration warning (non-fatal):', err.message);

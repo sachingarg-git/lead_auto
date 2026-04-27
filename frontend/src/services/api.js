@@ -34,8 +34,9 @@ api.interceptors.response.use(
     }
 
     const message = error.response?.data?.error || 'Something went wrong';
-    // Don't show a toast for silent background auth checks
-    if (!url.includes('/auth/me')) {
+    // Don't show a toast for silent background calls
+    const silentUrls = ['/auth/me', '/reschedules'];
+    if (!silentUrls.some(s => url.includes(s))) {
       toast.error(message);
     }
     return Promise.reject(error);

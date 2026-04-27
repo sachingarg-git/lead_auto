@@ -173,7 +173,11 @@ router.get('/email-templates/:id/preview', authorize('settings:read'), async (re
     const replace = s => s.replace(/\{\{#if (\w+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_, k, inner) => sample[k] ? inner : '').replace(/\{\{(\w+)\}\}/g, (_, k) => sample[k] || '');
     const subject = replace(t.subject);
     const body = replace(t.body);
-    const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px;background:#f9fafb;border-radius:8px"><div style="background:#0891b2;padding:20px 24px;border-radius:8px 8px 0 0"><h2 style="color:#fff;margin:0;font-size:20px">Wizone AI</h2></div><div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;white-space:pre-line;color:#374151;line-height:1.7;font-size:14px">${body.replace(/\n/g, '<br>')}</div></div>`;
+    const { wrapEmailHtml } = require('../services/emailService');
+    const html = wrapEmailHtml(
+      `<div style="white-space:pre-line">${body.replace(/\n/g, '<br>')}</div>`,
+      'Wizone AI'
+    );
     res.json({ subject, html, body });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -206,8 +210,12 @@ router.post('/send-template-email', authorize('leads:write'), async (req, res) =
     const body = replace(tmpl.body);
     const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px;background:#f9fafb;border-radius:8px"><div style="background:#0891b2;padding:20px 24px;border-radius:8px 8px 0 0"><h2 style="color:#fff;margin:0;font-size:20px">${companyName}</h2></div><div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;white-space:pre-line;color:#374151;line-height:1.7;font-size:14px">${body.replace(/\n/g, '<br>')}</div></div>`;
 
-    const { sendEmail } = require('../services/emailService');
-    await sendEmail({ to: lead.email, subject, html });
+    const { sendEmail, wrapEmailHtml } = require('../services/emailService');
+    const wrappedHtml = wrapEmailHtml(
+      `<div style="white-space:pre-line">${body.replace(/\n/g, '<br>')}</div>`,
+      companyName
+    );
+    await sendEmail({ to: lead.email, subject, html: wrappedHtml });
     res.json({ success: true, sent_to: lead.email, subject });
   } catch (err) { logger.error('send-template-email:', err); res.status(500).json({ error: err.message }); }
 });

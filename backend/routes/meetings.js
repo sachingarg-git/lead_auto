@@ -186,7 +186,7 @@ router.post('/:id/reschedule', async (req, res) => {
 
     // Log reschedule history
     await query(`
-      INSERT INTO MeetingRescheduleLog
+      INSERT INTO "MeetingRescheduleLog"
         (lead_id, old_meeting_datetime, old_slot_date, old_slot_time,
          new_meeting_datetime, new_slot_date, new_slot_time,
          reschedule_reason, reschedule_type, rescheduled_by_id, rescheduled_by_name)
@@ -270,7 +270,7 @@ router.get('/:id/reschedules', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const r  = await query(
-      `SELECT * FROM MeetingRescheduleLog WHERE lead_id = @id ORDER BY created_at DESC`,
+      `SELECT * FROM "MeetingRescheduleLog" WHERE lead_id = @id ORDER BY created_at DESC`,
       { id }
     );
     res.json(r.recordset);

@@ -121,6 +121,83 @@ function renderTemplate(template, vars) {
 }
 
 /**
+ * Wrap rendered body text inside a branded Wizone email shell with logo header + footer.
+ */
+function wrapEmailHtml(bodyHtml, companyName = 'Wizone AI') {
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+
+        <!-- ── Logo Header ───────────────────────────── -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#0891b2 0%,#0e7490 100%);
+                     border-radius:12px 12px 0 0;padding:24px 32px;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td>
+                  <!-- Logo mark -->
+                  <table cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="background:#ffffff22;border-radius:10px;
+                                 padding:6px 10px;display:inline-block;">
+                        <span style="font-size:22px;font-weight:900;color:#ffffff;
+                                     letter-spacing:-0.5px;font-family:Arial,sans-serif;">
+                          W<span style="color:#bae6fd;">i</span>zone
+                        </span>
+                        <span style="font-size:11px;color:#bae6fd;
+                                     font-weight:600;letter-spacing:1px;
+                                     display:block;margin-top:-2px;text-align:right;">
+                          AI
+                        </span>
+                      </td>
+                      <td style="padding-left:12px;vertical-align:middle;">
+                        <span style="color:#e0f2fe;font-size:13px;font-weight:500;">
+                          AI Lead Manager
+                        </span>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- ── Body ──────────────────────────────────── -->
+        <tr>
+          <td style="background:#ffffff;padding:32px;border-left:1px solid #e2e8f0;
+                     border-right:1px solid #e2e8f0;color:#374151;
+                     font-size:14px;line-height:1.8;">
+            ${bodyHtml}
+          </td>
+        </tr>
+
+        <!-- ── Footer ────────────────────────────────── -->
+        <tr>
+          <td style="background:#f8fafc;border:1px solid #e2e8f0;
+                     border-top:none;border-radius:0 0 12px 12px;
+                     padding:20px 32px;text-align:center;">
+            <p style="margin:0 0 4px;font-size:12px;color:#94a3b8;">
+              © ${new Date().getFullYear()} ${companyName} &nbsp;·&nbsp; All rights reserved
+            </p>
+            <p style="margin:0;font-size:11px;color:#cbd5e1;">
+              You are receiving this email because you enquired about our services.
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
+/**
  * Send a single email.
  */
 async function sendEmail({ to, subject, html, text }) {
@@ -215,28 +292,43 @@ async function buildWelcomeEmail(lead) {
   if (subject && body) {
     const renderedSubject = renderTemplate(subject, vars);
     const renderedBody    = renderTemplate(body, vars);
-    const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px;background:#f9fafb;border-radius:8px">
-      <div style="background:#0891b2;padding:20px 24px;border-radius:8px 8px 0 0">
-        <h2 style="color:#fff;margin:0;font-size:20px">${companyName}</h2>
-      </div>
-      <div style="background:#fff;padding:28px 24px;border-radius:0 0 8px 8px;white-space:pre-line;color:#374151;line-height:1.7;font-size:14px">
-        ${renderedBody.replace(/\n/g, '<br>')}
-      </div>
-    </div>`;
-    return { to: lead.email, subject: renderedSubject, html };
+    const bodyHtml = `<div style="white-space:pre-line">${renderedBody.replace(/\n/g, '<br>')}</div>`;
+    return { to: lead.email, subject: renderedSubject, html: wrapEmailHtml(bodyHtml, companyName) };
   }
 
   // Built-in fallback
+  const fallbackBody = `
+    <p style="font-size:16px;font-weight:bold;color:#0e7490;margin:0 0 16px;">
+      Hi ${lead.full_name},
+    </p>
+    <p style="margin:0 0 12px;">
+      Thank you for reaching out to <strong>${companyName}</strong>.
+      We have received your enquiry and will contact you shortly!
+    </p>
+    ${lead.slot_date ? `
+    <div style="background:#f0f9ff;border-left:4px solid #0891b2;padding:14px 18px;
+                border-radius:6px;margin:20px 0;">
+      <p style="margin:0;font-size:13px;color:#0e7490;font-weight:600;">📅 Your Appointment</p>
+      <p style="margin:6px 0 0;font-size:15px;font-weight:bold;color:#1e293b;">
+        ${formatSlotDate(lead.slot_date)}${lead.slot_time ? ' &nbsp;at&nbsp; ' + formatSlotTime(lead.slot_time) + ' IST' : ''}
+      </p>
+    </div>` : ''}
+    ${lead.meeting_link ? `
+    <p style="margin:20px 0 0;">
+      <a href="${lead.meeting_link}"
+         style="display:inline-block;background:#0891b2;color:#ffffff;
+                padding:13px 30px;border-radius:8px;text-decoration:none;
+                font-weight:bold;font-size:14px;">
+        🎥 Join Google Meet
+      </a>
+    </p>` : ''}
+    <p style="margin:28px 0 0;color:#64748b;font-size:13px;">
+      Best regards,<br><strong>${companyName} Team</strong>
+    </p>`;
   return {
-    to: lead.email,
-    subject: `Welcome ${lead.full_name}! We received your enquiry`,
-    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:24px">
-      <h2>Hi ${lead.full_name},</h2>
-      <p>Thank you for reaching out to <strong>${companyName}</strong>. We will contact you shortly!</p>
-      ${lead.slot_date ? `<p>📅 Your appointment: <strong>${formatSlotDate(lead.slot_date)}${lead.slot_time ? ' at ' + formatSlotTime(lead.slot_time) : ''}</strong></p>` : ''}
-      ${lead.meeting_link ? `<p><a href="${lead.meeting_link}" style="display:inline-block;background:#0891b2;color:#ffffff;padding:12px 28px;border-radius:6px;text-decoration:none;font-weight:bold;font-size:14px">🎥 Join Google Meet</a></p>` : ''}
-      <p>Best regards,<br>${companyName} Team</p>
-    </div>`,
+    to:      lead.email,
+    subject: `Welcome ${lead.full_name}! Your enquiry is confirmed`,
+    html:    wrapEmailHtml(fallbackBody, companyName),
   };
 }
 
@@ -318,5 +410,5 @@ async function buildRescheduleEmail(lead, { newDate, newTime, reason, type } = {
 module.exports = {
   sendEmail, testEmail, resetTransporter,
   buildWelcomeEmail, buildMeetingReminderEmail, buildFollowUpEmail,
-  buildRescheduleEmail, formatSlotDate, formatSlotTime, renderTemplate,
+  buildRescheduleEmail, formatSlotDate, formatSlotTime, renderTemplate, wrapEmailHtml,
 };
