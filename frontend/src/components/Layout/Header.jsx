@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
@@ -7,16 +7,19 @@ import { useAuth } from '../../context/AuthContext';
 
 export default function Header({ onMenuClick, scheduleOpen, onScheduleToggle }) {
   const location  = useLocation();
+  const navigate  = useNavigate();
   const { user }  = useAuth();
   const { t }     = useTranslation();
   const [liveCount, setLiveCount] = useState(0);
 
   const PAGE_TITLES = useMemo(() => ({
-    '/dashboard': t('nav.dashboard'),
-    '/leads':     t('nav.leads'),
-    '/sources':   t('nav.sources'),
-    '/admin':     t('nav.admin'),
-    '/settings':  t('nav.settings'),
+    '/dashboard':       t('nav.dashboard'),
+    '/leads':           t('nav.leads'),
+    '/sources':         t('nav.sources'),
+    '/admin':           t('nav.admin'),
+    '/settings':        t('nav.settings'),
+    '/converted-leads': 'Converted Leads',
+    '/guide':           'User Guide',
   }), [t]);
 
   const title = PAGE_TITLES[location.pathname] || 'Wizone LMS';
@@ -92,6 +95,26 @@ export default function Header({ onMenuClick, scheduleOpen, onScheduleToggle }) 
             {new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}
           </span>
         </div>
+
+        {/* User Guide button */}
+        <button
+          onClick={() => navigate('/guide')}
+          title="User Guide"
+          className={`
+            relative flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all duration-200
+            font-semibold text-[11px]
+            ${location.pathname === '/guide'
+              ? 'bg-brand-500 border-brand-500 text-white shadow-md shadow-brand-500/25'
+              : 'bg-white border-slate-200 text-slate-700 hover:border-brand-300 hover:text-brand-600 hover:bg-brand-50'
+            }
+          `}
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+          </svg>
+          <span className="hidden sm:inline">Guide</span>
+        </button>
 
         {/* Schedule toggle */}
         <button

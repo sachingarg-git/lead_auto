@@ -10,6 +10,7 @@ import ConvertedLeadsPage from './pages/ConvertedLeadsPage';
 import AdminPage from './pages/AdminPage';
 import SettingsPage from './pages/SettingsPage';
 import SourcesPage from './pages/SourcesPage';
+import UserGuidePage from './pages/UserGuidePage';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -42,6 +43,7 @@ function AppRoutes() {
         <Route path="sources"          element={<AdminRoute><SourcesPage /></AdminRoute>} />
         <Route path="admin"     element={<AdminRoute><AdminPage /></AdminRoute>} />
         <Route path="settings"  element={<SettingsPage />} />
+        <Route path="guide"     element={<UserGuidePage />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
