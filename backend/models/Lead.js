@@ -67,7 +67,7 @@ const Lead = {
     return result.recordset[0] || null;
   },
 
-  async findAll({ status, source, assigned_to, client_type, search, followup_date, slot_date, page = 1, limit = 20 }) {
+  async findAll({ status, source, assigned_to, client_type, search, followup_date, slot_date, not_statuses, page = 1, limit = 20 }) {
     const offset = (page - 1) * limit;
     const params = { offset, limit };
 
@@ -106,6 +106,13 @@ const Lead = {
     } else if (followup_date === 'week') {
       where += ` AND lf.next_followup_date >= DATE_TRUNC('week', NOW())::date
                  AND lf.next_followup_date <  (DATE_TRUNC('week', NOW()) + INTERVAL '7 days')::date`;
+    }
+
+    // ── Exclude specific statuses (e.g. Converted,Lost,Nurture from main table) ──
+    if (not_statuses) {
+      const statList = not_statuses.split(',').map(s => s.trim()).filter(Boolean);
+      statList.forEach((s, i) => { params[`not_status_${i}`] = s; });
+      where += ` AND l.status NOT IN (${statList.map((_, i) => `@not_status_${i}`).join(', ')})`;
     }
 
     // ── Slot date filter for "Today's Meetings" / "Tomorrow's Meetings" cards ──

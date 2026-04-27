@@ -51,9 +51,9 @@ async function getUsersMap() {
 
 async function getLeads(req, res) {
   try {
-    const { status, source, assigned_to, client_type, search, followup_date, slot_date, page, limit } = req.query;
+    const { status, source, assigned_to, client_type, search, followup_date, slot_date, not_statuses, page, limit } = req.query;
     const data = await Lead.findAll({
-      status, source, client_type, followup_date, slot_date,
+      status, source, client_type, followup_date, slot_date, not_statuses,
       assigned_to: assigned_to ? parseInt(assigned_to) : undefined,
       search, page: parseInt(page) || 1, limit: parseInt(limit) || 20,
     });

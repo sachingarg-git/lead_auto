@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
@@ -88,6 +88,7 @@ const getSourceStyle = s => {
 ═══════════════════════════════════════════════════════════════ */
 export default function LeadsPage() {
   const { can } = useAuth();
+  const navigate = useNavigate();
 
   const [leads,       setLeads]       = useState([]);
   const [total,       setTotal]       = useState(0);
@@ -98,9 +99,20 @@ export default function LeadsPage() {
   const [sources,     setSources]     = useState([]);
   const [showAdd,     setShowAdd]     = useState(false);
   const [stats,       setStats]       = useState({});
+
+  // Sub-table state for Lost + Nurture
+  const [lostLeads,    setLostLeads]    = useState([]);
+  const [lostLoading,  setLostLoading]  = useState(true);
+  const [nurtureLeads, setNurtureLeads] = useState([]);
+  const [nurtureLoading, setNurtureLoading] = useState(true);
+
+  // Refs for "scroll-to" when clicking Lost / Nurture cards
+  const lostRef    = useRef(null);
+  const nurtureRef = useRef(null);
   const [followupLead, setFollowupLead] = useState(null);
   const [deleteId,    setDeleteId]    = useState(null);
   const [sendModal,   setSendModal]   = useState(null); // { lead, channel: 'email'|'whatsapp' }
+  const [viewMode,    setViewMode]    = useState(() => localStorage.getItem('leadsViewMode') || 'table');
 
   // Filters — including followup_date and slot_date for card filters
   const [filters, setFilters] = useState({
@@ -112,8 +124,18 @@ export default function LeadsPage() {
     try {
       const params = { page, limit: 20,
         ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)) };
+      // When no explicit status filter is active, hide Converted/Lost/Nurture
+      // from the main table — they each have their own dedicated sections
+      if (!params.status) {
+        params.not_statuses = 'Converted,Lost,Nurture';
+      }
       const res = await leadsApi.getAll(params);
-      setLeads(res.data.leads);
+      // Safety: also filter client-side in case backend hasn't restarted yet
+      const EXCLUDED = ['Converted', 'Lost', 'Nurture'];
+      const filtered = (!params.status)
+        ? (res.data.leads || []).filter(l => !EXCLUDED.includes(l.status))
+        : (res.data.leads || []);
+      setLeads(filtered);
       setTotal(res.data.total);
       setPages(res.data.pages);
     } catch {}
@@ -127,8 +149,28 @@ export default function LeadsPage() {
     } catch {}
   }, []);
 
+  const loadLostLeads = useCallback(async () => {
+    setLostLoading(true);
+    try {
+      const res = await leadsApi.getAll({ status: 'Lost', limit: 50, page: 1 });
+      setLostLeads(res.data.leads || []);
+    } catch {}
+    finally { setLostLoading(false); }
+  }, []);
+
+  const loadNurtureLeads = useCallback(async () => {
+    setNurtureLoading(true);
+    try {
+      const res = await leadsApi.getAll({ status: 'Nurture', limit: 50, page: 1 });
+      setNurtureLeads(res.data.leads || []);
+    } catch {}
+    finally { setNurtureLoading(false); }
+  }, []);
+
   useEffect(() => { loadLeads(); }, [loadLeads]);
   useEffect(() => { loadStats(); }, [loadStats]);
+  useEffect(() => { loadLostLeads(); }, [loadLostLeads]);
+  useEffect(() => { loadNurtureLeads(); }, [loadNurtureLeads]);
 
   useEffect(() => {
     usersApi.getAll().then(r => setUsers(r.data)).catch(() => {});
@@ -138,10 +180,10 @@ export default function LeadsPage() {
   useEffect(() => {
     const socket = io('/', { withCredentials: true });
     socket.emit('join:dashboard');
-    socket.on('lead:new',     () => { loadLeads(); loadStats(); });
-    socket.on('lead:updated', () => { loadLeads(); loadStats(); });
+    socket.on('lead:new',     () => { loadLeads(); loadStats(); loadLostLeads(); loadNurtureLeads(); });
+    socket.on('lead:updated', () => { loadLeads(); loadStats(); loadLostLeads(); loadNurtureLeads(); });
     return () => socket.disconnect();
-  }, [loadLeads, loadStats]);
+  }, [loadLeads, loadStats, loadLostLeads, loadNurtureLeads]);
 
   function setFilter(k, v) { setFilters(f => ({ ...f, [k]: v })); setPage(1); }
 
@@ -188,6 +230,14 @@ export default function LeadsPage() {
           const st     = S[s];
           const count  = stats[STAT_KEY[s]] ?? 0;
           const active = filters.status === s;
+
+          // Converted → go to dedicated page
+          const handleCardClick =
+            s === 'Converted' ? () => navigate('/converted-leads') :
+            s === 'Lost'      ? () => { lostRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } :
+            s === 'Nurture'   ? () => { nurtureRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } :
+            () => toggleStatusFilter(s);
+
           return (
             <StatusCard key={s}
               label={s}
@@ -196,8 +246,9 @@ export default function LeadsPage() {
               light={st.light}
               textColor={st.text}
               icon={ICON[s]}
-              active={active}
-              onClick={() => toggleStatusFilter(s)}
+              active={s !== 'Converted' && s !== 'Lost' && s !== 'Nurture' && active}
+              onClick={handleCardClick}
+              isLink={s === 'Converted'}
             />
           );
         })}
@@ -318,6 +369,28 @@ export default function LeadsPage() {
           lead{total !== 1 ? 's' : ''}
         </div>
 
+        {/* View Toggle */}
+        <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+          <button
+            onClick={() => { setViewMode('table'); localStorage.setItem('leadsViewMode','table'); }}
+            title="Table View"
+            className={`w-8 h-8 flex items-center justify-center rounded-md transition-all
+              ${viewMode === 'table' ? 'bg-white shadow text-brand-600' : 'text-slate-400 hover:text-slate-600'}`}>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M3 6h18M3 14h18M3 18h18"/>
+            </svg>
+          </button>
+          <button
+            onClick={() => { setViewMode('grid'); localStorage.setItem('leadsViewMode','grid'); }}
+            title="Grid View"
+            className={`w-8 h-8 flex items-center justify-center rounded-md transition-all
+              ${viewMode === 'grid' ? 'bg-white shadow text-brand-600' : 'text-slate-400 hover:text-slate-600'}`}>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+            </svg>
+          </button>
+        </div>
+
         {can('leads:write') && (
           <button onClick={() => setShowAdd(true)}
             className="h-10 flex items-center gap-2 bg-brand-500 hover:bg-brand-600
@@ -331,29 +404,154 @@ export default function LeadsPage() {
         )}
       </div>
 
+      {/* ── Grid View ───────────────────────────────────────── */}
+      {viewMode === 'grid' && (
+        <div>
+          {loading ? (
+            <div className="flex justify-center py-20">
+              <div className="w-8 h-8 rounded-full border-2 border-brand-500 border-t-transparent animate-spin" />
+            </div>
+          ) : !leads.length ? (
+            <div className="text-center py-20 text-slate-400">
+              <div className="text-4xl mb-3 opacity-20">👤</div>
+              <p className="text-sm font-medium">No leads found</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {leads.map(lead => {
+                const st = S[lead.status] || S.New;
+                return (
+                  <Link key={lead.id} to={`/leads/${lead.id}`}
+                    className="bg-white rounded-2xl border border-slate-200 hover:border-brand-300
+                               hover:shadow-lg transition-all p-4 flex flex-col gap-3 group"
+                    style={{ boxShadow: '0 1px 4px rgba(0,0,0,.05)' }}>
+                    {/* Top row: avatar + status + slot tag */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shrink-0 text-white"
+                          style={{ background: st.accent }}>
+                          {lead.full_name?.[0]?.toUpperCase() || '?'}
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-slate-900 leading-tight truncate max-w-[130px]">
+                            {lead.full_name}
+                          </p>
+                          {lead.company && (
+                            <p className="text-[11px] text-slate-500 truncate max-w-[130px]">{lead.company}</p>
+                          )}
+                        </div>
+                      </div>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold shrink-0 ${st.badge}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
+                        {lead.status}
+                      </span>
+                    </div>
+
+                    {/* Industry + Source */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {lead.industry && (
+                        <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
+                          {lead.industry}
+                        </span>
+                      )}
+                      {lead.source && (
+                        <span className="text-[10px] bg-brand-50 text-brand-600 px-2 py-0.5 rounded-full font-medium border border-brand-100">
+                          {lead.source}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Contact */}
+                    <div className="space-y-1">
+                      {lead.phone && (
+                        <div className="flex items-center gap-1.5 text-[12px] text-slate-700 font-medium">
+                          <svg className="w-3 h-3 text-emerald-500 shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                          </svg>
+                          {lead.phone}
+                        </div>
+                      )}
+                      {lead.email && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-600 truncate">
+                          <svg className="w-3 h-3 text-sky-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                          </svg>
+                          <span className="truncate">{lead.email}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Slot + Meet */}
+                    {lead.slot_date && (
+                      <div className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2 border border-slate-100">
+                        <div>
+                          <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wide">Slot</p>
+                          <p className="text-[12px] font-bold text-slate-800">
+                            {new Date(lead.slot_date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}
+                          </p>
+                          {lead.slot_time && (
+                            <p className="text-[11px] text-brand-600 font-semibold">
+                              {lead.slot_time.substring(0,5)} IST
+                            </p>
+                          )}
+                        </div>
+                        {lead.meeting_link && (
+                          <a href={lead.meeting_link} target="_blank" rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="w-8 h-8 flex items-center justify-center rounded-xl bg-sky-100
+                                       text-sky-600 hover:bg-sky-200 border border-sky-200 text-base">
+                            🎥
+                          </a>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Footer: date */}
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-100 mt-auto">
+                      <span className="text-[10px] text-slate-400">
+                        {lead.created_at ? format(new Date(lead.created_at), 'dd MMM yyyy') : '—'}
+                      </span>
+                      <span className="text-[10px] text-brand-500 font-semibold group-hover:underline">View →</span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Table ────────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 overflow-hidden"
+      {viewMode === 'table' && (
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden"
         style={{ boxShadow: '0 1px 4px rgba(0,0,0,.05)' }}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm" style={{ minWidth: '1100px' }}>
+        {/* No overflow-x-auto — table fits in view via table-layout:fixed */}
+        <table className="w-full text-sm" style={{ tableLayout: 'fixed', borderCollapse: 'collapse' }}>
+          {/* ── Column proportions (sum = 100%) ── */}
+          <colgroup>
+            <col style={{ width: '16%' }} /> {/* Lead */}
+            <col style={{ width: '9%'  }} /> {/* Company */}
+            <col style={{ width: '12%' }} /> {/* Contact */}
+            <col style={{ width: '7%'  }} /> {/* Industry */}
+            <col style={{ width: '9%'  }} /> {/* Slot */}
+            <col style={{ width: '4%'  }} /> {/* Meet */}
+            <col style={{ width: '9%'  }} /> {/* Source */}
+            <col style={{ width: '8%'  }} /> {/* Status */}
+            <col style={{ width: '6%'  }} /> {/* Date */}
+            <col style={{ width: '20%' }} /> {/* Actions — needs room for 7 buttons */}
+          </colgroup>
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/70">
-                {['Lead','Company','Contact','Industry','Slot','Meet','Source','Status','Date'].map(h => (
+              <tr className="bg-slate-100 border-b-2 border-slate-300 divide-x divide-slate-300">
+                {['Lead','Company','Contact','Industry','Slot','Meet','Source','Status','Date','Actions'].map(h => (
                   <th key={h}
-                    className="px-4 py-3 text-[10px] font-bold text-slate-500
-                               uppercase tracking-[0.1em] text-left whitespace-nowrap">
+                    className="px-3 py-2.5 text-[10px] font-bold text-slate-700
+                               uppercase tracking-[0.08em] text-left whitespace-nowrap">
                     {h}
                   </th>
                 ))}
-                {/* Actions — sticky right so buttons never overflow off-screen */}
-                <th className="px-4 py-3 text-[10px] font-bold text-slate-500 uppercase tracking-[0.1em]
-                               text-left whitespace-nowrap sticky right-0 bg-slate-50/95 backdrop-blur-sm
-                               border-l border-slate-100 z-10">
-                  Actions
-                </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr><td colSpan={9} className="py-20 text-center">
                   <div className="flex flex-col items-center gap-3">
@@ -402,7 +600,6 @@ export default function LeadsPage() {
               ))}
             </tbody>
           </table>
-        </div>
 
         {pages > 1 && (
           <div className="flex items-center justify-between px-5 py-3.5 border-t border-slate-100 bg-slate-50/50">
@@ -430,6 +627,54 @@ export default function LeadsPage() {
             </div>
           </div>
         )}
+      </div>
+      )} {/* end viewMode === 'table' */}
+
+      {/* ── Pagination for Grid View ─────────────────────────── */}
+      {viewMode === 'grid' && pages > 1 && (
+        <div className="flex items-center justify-between px-2 py-3">
+          <span className="text-xs text-slate-500">
+            Page <strong className="text-slate-700">{page}</strong> of <strong className="text-slate-700">{pages}</strong>
+          </span>
+          <div className="flex items-center gap-1">
+            <PagBtn onClick={() => setPage(1)}           disabled={page === 1}     label="«" />
+            <PagBtn onClick={() => setPage(p => p - 1)} disabled={page === 1}     label="‹" />
+            <PagBtn onClick={() => setPage(p => p + 1)} disabled={page === pages} label="›" />
+            <PagBtn onClick={() => setPage(pages)}      disabled={page === pages} label="»" />
+          </div>
+        </div>
+      )}
+
+      {/* ── Lost Leads Sub-table ─────────────────────────────── */}
+      <div ref={lostRef} className="scroll-mt-4">
+        <StatusSubTable
+          title="Lost Leads"
+          status="Lost"
+          accent={S.Lost.accent}
+          badge={S.Lost.badge}
+          dot={S.Lost.dot}
+          leads={lostLeads}
+          loading={lostLoading}
+          users={users}
+          onReload={() => { loadLostLeads(); loadStats(); }}
+          setSendModal={setSendModal}
+        />
+      </div>
+
+      {/* ── Nurture Leads Sub-table ───────────────────────────── */}
+      <div ref={nurtureRef} className="scroll-mt-4">
+        <StatusSubTable
+          title="Nurture Leads"
+          status="Nurture"
+          accent={S.Nurture.accent}
+          badge={S.Nurture.badge}
+          dot={S.Nurture.dot}
+          leads={nurtureLeads}
+          loading={nurtureLoading}
+          users={users}
+          onReload={() => { loadNurtureLeads(); loadStats(); }}
+          setSendModal={setSendModal}
+        />
       </div>
 
       {/* ── Modals ───────────────────────────────────────────── */}
@@ -461,7 +706,7 @@ export default function LeadsPage() {
 }
 
 /* ── Professional Status Card ─────────────────────────────────── */
-function StatusCard({ label, count, accent, light, textColor, icon, active, onClick }) {
+function StatusCard({ label, count, accent, light, textColor, icon, active, onClick, isLink }) {
   return (
     <button onClick={onClick}
       className="relative bg-white rounded-2xl border border-slate-200 text-left
@@ -490,9 +735,14 @@ function StatusCard({ label, count, accent, light, textColor, icon, active, onCl
         </div>
 
         {/* Label */}
-        <div className="text-[10px] font-bold uppercase tracking-wider"
+        <div className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"
           style={{ color: active ? accent : '#94a3b8' }}>
           {label}
+          {isLink && (
+            <svg className="w-2.5 h-2.5 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+          )}
         </div>
       </div>
 
@@ -553,6 +803,244 @@ function DateCard({ label, sub, count, accent, light, textColor, icon, active, o
   );
 }
 
+/* ── Status Sub-Table (Lost / Nurture) ────────────────────────── */
+function StatusSubTable({ title, status, accent, badge, dot, leads, loading, users, onReload, setSendModal }) {
+  const [followupLead, setFollowupLead] = useState(null);
+  const [deleteId,     setDeleteId]     = useState(null);
+  const st = S[status] || S.New;
+
+  async function handleDelete(id) {
+    try {
+      await leadsApi.delete(id);
+      toast.success('Lead deleted');
+      onReload();
+    } catch { toast.error('Failed to delete lead'); }
+  }
+
+  return (
+    <div className="rounded-2xl border overflow-hidden" style={{
+      borderColor: `${accent}40`,
+      boxShadow: `0 1px 8px ${accent}10`,
+    }}>
+      {/* Section header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b"
+        style={{ background: `${accent}08`, borderColor: `${accent}30` }}>
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-xl flex items-center justify-center"
+            style={{ background: `${accent}18` }}>
+            <span className={`w-2 h-2 rounded-full`} style={{ background: accent }} />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-800">{title}</h3>
+            <p className="text-[10px] font-medium" style={{ color: `${accent}cc` }}>
+              {loading ? 'Loading…' : `${leads.length} lead${leads.length !== 1 ? 's' : ''}`}
+            </p>
+          </div>
+        </div>
+        <button onClick={onReload}
+          className="w-7 h-7 flex items-center justify-center rounded-lg border text-slate-400
+                     hover:text-slate-600 hover:bg-white/80 transition-all"
+          style={{ borderColor: `${accent}30` }}
+          title="Refresh">
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+        </button>
+      </div>
+
+      {/* Table */}
+      <div className="bg-white">
+        {loading ? (
+          <div className="flex justify-center py-8">
+            <div className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin"
+              style={{ borderColor: `${accent}40`, borderTopColor: 'transparent' }} />
+          </div>
+        ) : !leads.length ? (
+          <div className="py-8 text-center">
+            <div className="text-2xl mb-2 opacity-20">
+              {status === 'Lost' ? '❌' : '🌱'}
+            </div>
+            <p className="text-xs text-slate-400 font-medium">No {status.toLowerCase()} leads</p>
+          </div>
+        ) : (
+          <table className="w-full text-sm" style={{ tableLayout: 'fixed', borderCollapse: 'collapse' }}>
+            <colgroup>
+              <col style={{ width: '18%' }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '13%' }} />
+              <col style={{ width: '8%'  }} />
+              <col style={{ width: '10%' }} />
+              <col style={{ width: '9%'  }} />
+              <col style={{ width: '9%'  }} />
+              <col style={{ width: '7%'  }} />
+              <col style={{ width: '16%' }} />
+            </colgroup>
+            <thead>
+              <tr className="divide-x border-b"
+                style={{ background: `${accent}0a`, borderColor: `${accent}30`, '--tw-divide-opacity': 1 }}>
+                {['Lead','Company','Contact','Industry','Slot','Source','Status','Date','Actions'].map(h => (
+                  <th key={h} className="px-3 py-2 text-[10px] font-bold uppercase tracking-[0.08em] text-left"
+                    style={{ color: `${accent}bb` }}>
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {leads.map(lead => (
+                <SubLeadRow key={lead.id} lead={lead} users={users}
+                  onFollowUp={() => setFollowupLead(lead)}
+                  onDelete={() => setDeleteId(lead.id)}
+                  onEmail={() => setSendModal({ lead, channel: 'email' })}
+                  onWhatsApp={() => setSendModal({ lead, channel: 'whatsapp' })}
+                />
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Modals */}
+      {followupLead && (
+        <FollowUpModal lead={followupLead}
+          onClose={() => setFollowupLead(null)}
+          onSuccess={() => { setFollowupLead(null); onReload(); }} />
+      )}
+      {deleteId && (
+        <DeleteConfirm
+          onConfirm={() => { handleDelete(deleteId); setDeleteId(null); }}
+          onCancel={() => setDeleteId(null)} />
+      )}
+    </div>
+  );
+}
+
+/* ── Sub-table Lead Row (compact, no assign dropdown) ─────────── */
+function SubLeadRow({ lead, users, onFollowUp, onDelete, onEmail, onWhatsApp }) {
+  const st = S[lead.status] || S.New;
+
+  return (
+    <tr className="group divide-x divide-slate-100 even:bg-slate-50/40 hover:bg-sky-50/20 transition-colors">
+      {/* Name */}
+      <td className="px-3 py-2">
+        <button onClick={onFollowUp} className="flex items-center gap-2 text-left w-full">
+          <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold shrink-0"
+            style={{ background: st.accent }}>
+            {lead.full_name?.[0]?.toUpperCase()}
+          </div>
+          <span className="text-[12px] font-semibold text-slate-800 truncate hover:text-brand-600 transition-colors">
+            {lead.full_name}
+          </span>
+        </button>
+      </td>
+      {/* Company */}
+      <td className="px-3 py-2">
+        <span className="text-[11px] text-slate-700 font-medium truncate block" title={lead.company}>
+          {lead.company || <span className="text-slate-300">—</span>}
+        </span>
+      </td>
+      {/* Contact */}
+      <td className="px-3 py-2">
+        {lead.phone
+          ? <a href={`https://wa.me/${lead.phone.replace(/\D/g,'')}`}
+              target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+              className="text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 transition-colors">
+              {lead.phone}
+            </a>
+          : <span className="text-slate-300 text-xs">—</span>
+        }
+        {lead.email && (
+          <div className="text-[10px] text-slate-500 truncate">{lead.email}</div>
+        )}
+      </td>
+      {/* Industry */}
+      <td className="px-3 py-2">
+        <span className="text-[11px] text-slate-700 font-medium">
+          {lead.industry || <span className="text-slate-300">—</span>}
+        </span>
+      </td>
+      {/* Slot */}
+      <td className="px-3 py-2">
+        {lead.slot_date
+          ? <div className="text-[11px] font-medium text-slate-700">
+              {new Date(lead.slot_date).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}
+              {lead.slot_time && <span className="block text-[10px] text-brand-600">{lead.slot_time.substring(0,5)}</span>}
+            </div>
+          : <span className="text-slate-300 text-xs">—</span>
+        }
+      </td>
+      {/* Source */}
+      <td className="px-3 py-2">
+        {lead.source
+          ? <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${getSourceStyle(lead.source)}`}>
+              {lead.source}
+            </span>
+          : <span className="text-slate-300 text-xs">—</span>
+        }
+      </td>
+      {/* Status */}
+      <td className="px-3 py-2">
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold ${st.badge}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
+          {lead.status}
+        </span>
+      </td>
+      {/* Date */}
+      <td className="px-3 py-2 whitespace-nowrap">
+        <div className="text-[11px] font-bold text-slate-700">
+          {lead.created_at ? format(new Date(lead.created_at), 'dd MMM') : '—'}
+        </div>
+      </td>
+      {/* Actions */}
+      <td className="px-2 py-2">
+        <div className="flex items-center gap-0.5 flex-nowrap">
+          <Link to={`/leads/${lead.id}`} title="View"
+            className="w-6 h-6 flex items-center justify-center rounded-md border border-slate-200
+                       bg-white text-slate-400 hover:text-brand-600 hover:border-brand-300
+                       hover:bg-brand-50 transition-all shadow-sm">
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+            </svg>
+          </Link>
+          <button onClick={onFollowUp} title="FollowUp"
+            className="w-6 h-6 flex items-center justify-center rounded-md border border-amber-200
+                       bg-amber-50 text-amber-500 hover:bg-amber-100 transition-all shadow-sm">
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+            </svg>
+          </button>
+          {lead.email && (
+            <button onClick={onEmail} title="Email"
+              className="w-6 h-6 flex items-center justify-center rounded-md border border-sky-200
+                         bg-sky-50 text-sky-500 hover:bg-sky-100 transition-all shadow-sm">
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+              </svg>
+            </button>
+          )}
+          {(lead.phone || lead.whatsapp_number) && (
+            <button onClick={onWhatsApp} title="WhatsApp"
+              className="w-6 h-6 flex items-center justify-center rounded-md border border-emerald-200
+                         bg-emerald-50 text-emerald-500 hover:bg-emerald-100 transition-all shadow-sm">
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+              </svg>
+            </button>
+          )}
+          <button onClick={onDelete} title="Delete"
+            className="w-6 h-6 flex items-center justify-center rounded-md border border-red-200
+                       bg-red-50 text-red-400 hover:bg-red-100 transition-all shadow-sm">
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 /* ── Lead Row ─────────────────────────────────────────────────── */
 function LeadRow({ lead, users, onFollowUp, onDelete, onAssigned, onEmail, onWhatsApp, onGenerateMeet }) {
   const st = S[lead.status] || S.New;
@@ -572,10 +1060,10 @@ function LeadRow({ lead, users, onFollowUp, onDelete, onAssigned, onEmail, onWha
   }
 
   return (
-    <tr className="group hover:bg-slate-50/60 transition-colors">
+    <tr className="group divide-x divide-slate-100 even:bg-slate-50/40 hover:bg-sky-50/30 transition-colors">
 
       {/* Name + auto tags */}
-      <td className="px-4 py-3">
+      <td className="px-3 py-2.5">
         <button onClick={onFollowUp} className="flex items-center gap-2.5 text-left w-full group/link">
           <div className="relative shrink-0">
             <div className="w-8 h-8 rounded-full bg-brand-500/10 border border-brand-500/15
@@ -612,7 +1100,7 @@ function LeadRow({ lead, users, onFollowUp, onDelete, onAssigned, onEmail, onWha
             </div>
             {/* Name */}
             <div className="font-semibold text-slate-800 group-hover/link:text-brand-600
-                            transition-colors text-[13px] truncate max-w-[140px]">
+                            transition-colors text-[13px] truncate w-full">
               {lead.full_name}
             </div>
           </div>
@@ -620,14 +1108,14 @@ function LeadRow({ lead, users, onFollowUp, onDelete, onAssigned, onEmail, onWha
       </td>
 
       {/* Company */}
-      <td className="px-4 py-3">
-        <span className="text-[12px] text-slate-600 max-w-[130px] block truncate" title={lead.company}>
+      <td className="px-3 py-2.5">
+        <span className="text-[12px] text-slate-800 font-medium block truncate" title={lead.company}>
           {lead.company || <span className="text-slate-300">—</span>}
         </span>
       </td>
 
       {/* Contact */}
-      <td className="px-4 py-3">
+      <td className="px-3 py-2.5">
         {lead.phone ? (
           <a href={`https://wa.me/${(lead.phone).replace(/\D/g, '')}`}
             target="_blank" rel="noopener noreferrer"
@@ -641,25 +1129,25 @@ function LeadRow({ lead, users, onFollowUp, onDelete, onAssigned, onEmail, onWha
           </a>
         ) : <span className="text-slate-300 text-xs">—</span>}
         {lead.email && (
-          <div className="text-[10px] text-slate-500 mt-0.5 truncate max-w-[150px]">{lead.email}</div>
+          <div className="text-[10px] text-slate-600 mt-0.5 truncate font-medium">{lead.email}</div>
         )}
       </td>
 
       {/* Industry */}
-      <td className="px-4 py-3">
-        <span className="text-[12px] text-slate-600">
+      <td className="px-3 py-2.5">
+        <span className="text-[12px] text-slate-800 font-medium">
           {lead.industry || <span className="text-slate-300">—</span>}
         </span>
       </td>
 
       {/* Slot */}
-      <td className="px-4 py-3">
+      <td className="px-3 py-2.5">
         <SlotCell slotDate={lead.slot_date} slotTime={lead.slot_time}
           preferred={lead.preferred_slot} meetingDatetime={lead.meeting_datetime} />
       </td>
 
       {/* Google Meet Link */}
-      <td className="px-4 py-3 text-center">
+      <td className="px-2 py-2.5 text-center">
         {lead.meeting_link ? (
           <a
             href={lead.meeting_link}
@@ -679,7 +1167,7 @@ function LeadRow({ lead, users, onFollowUp, onDelete, onAssigned, onEmail, onWha
       </td>
 
       {/* Source */}
-      <td className="px-4 py-3">
+      <td className="px-3 py-2.5">
         {lead.source
           ? <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px]
                               font-semibold border ${getSourceStyle(lead.source)}`}>
@@ -689,7 +1177,7 @@ function LeadRow({ lead, users, onFollowUp, onDelete, onAssigned, onEmail, onWha
       </td>
 
       {/* Status badge — static, no dropdown */}
-      <td className="px-4 py-3">
+      <td className="px-3 py-2.5">
         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border
                           text-[11px] font-semibold ${st.badge}`}>
           <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`} />
@@ -698,19 +1186,18 @@ function LeadRow({ lead, users, onFollowUp, onDelete, onAssigned, onEmail, onWha
       </td>
 
       {/* Date — created_at returned as IST string "YYYY-MM-DDTHH:MI:SS" (no Z) */}
-      <td className="px-4 py-3 whitespace-nowrap">
-        <div className="text-[12px] font-semibold text-slate-600">
+      <td className="px-3 py-2.5 whitespace-nowrap">
+        <div className="text-[12px] font-bold text-slate-800">
           {lead.created_at ? format(new Date(lead.created_at), 'dd MMM') : '—'}
         </div>
-        <div className="text-[10px] text-slate-400">
+        <div className="text-[10px] text-slate-500 font-medium">
           {lead.created_at ? lead.created_at.substring(11, 16) : ''}
         </div>
       </td>
 
-      {/* Actions — sticky right so buttons always visible */}
-      <td className="px-4 py-3 sticky right-0 bg-white border-l border-slate-100 z-10"
-          style={{ boxShadow: '-2px 0 6px rgba(0,0,0,0.04)' }}>
-        <div className="flex items-center gap-0.5">
+      {/* Actions */}
+      <td className="px-2 py-2.5">
+        <div className="flex items-center gap-0.5 flex-nowrap">
           {/* View */}
           <Link to={`/leads/${lead.id}`} title="View Detail"
             className="w-6 h-6 flex items-center justify-center rounded-md border border-slate-200

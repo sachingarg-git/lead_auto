@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import LeadsPage from './pages/LeadsPage';
 import LeadDetailPage from './pages/LeadDetailPage';
+import ConvertedLeadsPage from './pages/ConvertedLeadsPage';
 import AdminPage from './pages/AdminPage';
 import SettingsPage from './pages/SettingsPage';
 import SourcesPage from './pages/SourcesPage';
@@ -35,9 +36,10 @@ function AppRoutes() {
       <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="leads"     element={<LeadsPage />} />
-        <Route path="leads/:id" element={<LeadDetailPage />} />
-        <Route path="sources"   element={<AdminRoute><SourcesPage /></AdminRoute>} />
+        <Route path="leads"            element={<LeadsPage />} />
+        <Route path="leads/:id"        element={<LeadDetailPage />} />
+        <Route path="converted-leads"  element={<ConvertedLeadsPage />} />
+        <Route path="sources"          element={<AdminRoute><SourcesPage /></AdminRoute>} />
         <Route path="admin"     element={<AdminRoute><AdminPage /></AdminRoute>} />
         <Route path="settings"  element={<SettingsPage />} />
       </Route>

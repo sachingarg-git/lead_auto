@@ -35,14 +35,21 @@ const SettingsIcon = () => (
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
   </svg>
 );
+const ConvertedIcon = () => (
+  <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+    <path strokeLinecap="round" strokeLinejoin="round"
+      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
 
 export default function Sidebar({ isOpen, onClose, desktopHidden = false }) {
   const { user, isAdmin, logout } = useAuth();
   const { t } = useTranslation();
 
   const navItems = [
-    { to: '/dashboard', label: t('nav.dashboard'), icon: <DashboardIcon /> },
-    { to: '/leads',     label: t('nav.leads'),     icon: <LeadsIcon /> },
+    { to: '/dashboard',        label: t('nav.dashboard'),   icon: <DashboardIcon /> },
+    { to: '/leads',            label: t('nav.leads'),       icon: <LeadsIcon /> },
+    { to: '/converted-leads',  label: 'Converted Leads',   icon: <ConvertedIcon /> },
   ];
   const adminNavItems = [
     { to: '/sources',  label: t('nav.sources'),  icon: <SourcesIcon /> },
