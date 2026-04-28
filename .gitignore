@@ -32,10 +32,14 @@ desktop.ini
 *.swp
 *.swo
 
-# Images (large files)
+# Images (large files — exclude user/desktop images but allow app assets)
 *.jpeg
 *.jpg
 *.png
 *.gif
 !frontend/src/**/*.png
+!frontend/src/**/*.jpg
+!frontend/src/**/*.jpeg
 !frontend/public/**/*.png
+!frontend/public/**/*.jpg
+!frontend/public/**/*.jpeg
