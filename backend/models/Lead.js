@@ -96,7 +96,12 @@ const Lead = {
     if (status)      { where += ' AND l.status = @status';           params.status = status; }
     if (source)      { where += ' AND l.source = @source';           params.source = source; }
     if (client_type) { where += ' AND l.client_type = @client_type'; params.client_type = client_type; }
-    if (assigned_to) { where += ' AND l.assigned_to = @assigned_to'; params.assigned_to = assigned_to; }
+    if (assigned_to === 'none') {
+      where += ' AND l.assigned_to IS NULL';
+    } else if (assigned_to) {
+      where += ' AND l.assigned_to = @assigned_to';
+      params.assigned_to = assigned_to;
+    }
     if (search) {
       where += ` AND (l.full_name ILIKE @search OR l.email ILIKE @search OR l.phone ILIKE @search)`;
       params.search = `%${search}%`;

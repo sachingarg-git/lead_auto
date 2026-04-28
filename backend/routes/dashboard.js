@@ -230,4 +230,27 @@ router.get('/schedule', async (req, res) => {
   }
 });
 
+// Assignment overview — leads per agent + unassigned count
+router.get('/assignment', async (req, res) => {
+  try {
+    const r = await query(`
+      SELECT
+        COALESCE(u.name, 'Unassigned')          AS agent_name,
+        COALESCE(u.id::text, 'none')            AS agent_key,
+        COUNT(l.id)::int                        AS lead_count
+      FROM "Leads" l
+      LEFT JOIN "Users" u ON l.assigned_to = u.id
+      WHERE l.status NOT IN ('Converted', 'Lost', 'Nurture')
+      GROUP BY u.id, u.name, l.assigned_to
+      ORDER BY
+        CASE WHEN l.assigned_to IS NULL THEN 1 ELSE 0 END ASC,
+        lead_count DESC
+    `);
+    res.json(r.recordset || []);
+  } catch (err) {
+    logger.error('assignment overview error:', err);
+    res.status(500).json({ error: 'Failed to fetch assignment data' });
+  }
+});
+
 module.exports = router;

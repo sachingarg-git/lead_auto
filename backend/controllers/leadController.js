@@ -52,9 +52,10 @@ async function getUsersMap() {
 async function getLeads(req, res) {
   try {
     const { status, source, assigned_to, client_type, search, followup_date, slot_date, not_statuses, page, limit } = req.query;
+    const resolvedAssignedTo = assigned_to === 'none' ? 'none' : (assigned_to ? parseInt(assigned_to) : undefined);
     const data = await Lead.findAll({
       status, source, client_type, followup_date, slot_date, not_statuses,
-      assigned_to: assigned_to ? parseInt(assigned_to) : undefined,
+      assigned_to: resolvedAssignedTo,
       search, page: parseInt(page) || 1, limit: parseInt(limit) || 20,
     });
     res.json(data);

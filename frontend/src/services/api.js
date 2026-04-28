@@ -71,8 +71,9 @@ export const leadsApi = {
 
 // ── Dashboard ─────────────────────────────────────────────────
 export const dashboardApi = {
-  getSummary:  () => api.get('/dashboard/summary'),
-  getSchedule: () => api.get('/dashboard/schedule'),
+  getSummary:    () => api.get('/dashboard/summary'),
+  getSchedule:   () => api.get('/dashboard/schedule'),
+  getAssignment: () => api.get('/dashboard/assignment'),
 };
 
 // ── Users ─────────────────────────────────────────────────────

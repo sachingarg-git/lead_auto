@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
-import api, { leadsApi, usersApi } from '../services/api';
+import api, { leadsApi, usersApi, dashboardApi } from '../services/api';
 import { format } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 
@@ -83,6 +83,73 @@ const getSourceStyle = s => {
   return 'bg-violet-50 text-violet-600 border-violet-200';
 };
 
+/* ── Assignment Overview Card ───────────────────────────────── */
+const CHIP_COLORS = [
+  { base: 'bg-sky-50 border-sky-200 text-sky-700',       active: 'bg-sky-500 border-sky-500 text-white',     avatar: 'bg-sky-500'     },
+  { base: 'bg-violet-50 border-violet-200 text-violet-700', active: 'bg-violet-500 border-violet-500 text-white', avatar: 'bg-violet-500' },
+  { base: 'bg-emerald-50 border-emerald-200 text-emerald-700', active: 'bg-emerald-500 border-emerald-500 text-white', avatar: 'bg-emerald-500' },
+  { base: 'bg-amber-50 border-amber-200 text-amber-700',  active: 'bg-amber-500 border-amber-500 text-white', avatar: 'bg-amber-500'   },
+  { base: 'bg-pink-50 border-pink-200 text-pink-700',     active: 'bg-pink-500 border-pink-500 text-white',   avatar: 'bg-pink-500'    },
+  { base: 'bg-indigo-50 border-indigo-200 text-indigo-700', active: 'bg-indigo-500 border-indigo-500 text-white', avatar: 'bg-indigo-500' },
+];
+const UNASSIGNED_COLOR = { base: 'bg-slate-50 border-slate-200 text-slate-500', active: 'bg-slate-600 border-slate-600 text-white', avatar: 'bg-slate-400' };
+
+function AssignmentCard({ assignment, activeKey, onSelect, onClear }) {
+  const total = assignment.reduce((s, x) => s + (x.lead_count || 0), 0);
+  let agentIdx = 0;
+  return (
+    <div className="bg-white border border-slate-200/80 rounded-2xl px-5 py-4 shadow-sm">
+      <div className="flex items-center gap-2 mb-3">
+        <svg className="w-4 h-4 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+        <span className="text-sm font-bold text-slate-700">Team Assignment Overview</span>
+        {activeKey && (
+          <button onClick={onClear}
+            className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-500 transition-colors font-semibold">
+            ✕ Clear filter
+          </button>
+        )}
+        <span className="ml-auto text-[11px] text-slate-400 font-medium">Click to filter · Active leads only</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {assignment.map((a, idx) => {
+          // Defensive: support both old (agent_id/is_unassigned) and new (agent_key) API shapes
+          const chipKey  = a.agent_key
+            ? a.agent_key
+            : (a.is_unassigned ? 'none' : String(a.agent_id ?? idx));
+          const isUnassigned = chipKey === 'none';
+          const color        = isUnassigned ? UNASSIGNED_COLOR : CHIP_COLORS[agentIdx % CHIP_COLORS.length];
+          if (!isUnassigned) agentIdx++;
+          const isActive = !!activeKey && activeKey === chipKey;
+          const pct      = total > 0 ? Math.round((a.lead_count / total) * 100) : 0;
+          const initial  = isUnassigned ? '?' : (a.agent_name?.[0]?.toUpperCase() || '?');
+          return (
+            <button key={chipKey || idx}
+              onClick={() => onSelect(chipKey)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium
+                transition-all duration-150 hover:shadow-md hover:scale-[1.02]
+                ${isActive ? color.active : color.base}`}
+            >
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0
+                ${isActive ? 'bg-white/30 text-current' : color.avatar + ' text-white'}`}>
+                {initial}
+              </div>
+              <span className="font-semibold truncate max-w-[120px]">{a.agent_name}</span>
+              <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${isActive ? 'bg-white/30' : 'bg-white/60'}`}>
+                {a.lead_count}
+              </span>
+              <span className="text-[10px] opacity-60">{pct}%</span>
+              {isActive && <span className="text-[10px]">✓</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /* ════════════════════════════════════════════════════════════════
    LeadsPage
 ═══════════════════════════════════════════════════════════════ */
@@ -100,6 +167,9 @@ export default function LeadsPage() {
   const [showAdd,     setShowAdd]     = useState(false);
   const [stats,       setStats]       = useState({});
 
+  // Assignment overview card
+  const [assignment, setAssignment] = useState([]);
+
   // Sub-table state for Lost + Nurture
   const [lostLeads,    setLostLeads]    = useState([]);
   const [lostLoading,  setLostLoading]  = useState(true);
@@ -116,7 +186,7 @@ export default function LeadsPage() {
 
   // Filters — including followup_date and slot_date for card filters
   const [filters, setFilters] = useState({
-    status: '', source: '', client_type: '', search: '', followup_date: '', slot_date: '',
+    status: '', source: '', client_type: '', search: '', followup_date: '', slot_date: '', assigned_to: '',
   });
 
   const loadLeads = useCallback(async () => {
@@ -138,7 +208,13 @@ export default function LeadsPage() {
       setLeads(filtered);
       setTotal(res.data.total);
       setPages(res.data.pages);
-    } catch {}
+    } catch (err) {
+      console.error('[loadLeads] error:', err);
+      // Clear leads on error so stale data doesn't mislead
+      setLeads([]);
+      setTotal(0);
+      setPages(1);
+    }
     finally { setLoading(false); }
   }, [page, filters]);
 
@@ -167,10 +243,18 @@ export default function LeadsPage() {
     finally { setNurtureLoading(false); }
   }, []);
 
+  const loadAssignment = useCallback(async () => {
+    try {
+      const res = await dashboardApi.getAssignment();
+      setAssignment(res.data || []);
+    } catch {}
+  }, []);
+
   useEffect(() => { loadLeads(); }, [loadLeads]);
   useEffect(() => { loadStats(); }, [loadStats]);
   useEffect(() => { loadLostLeads(); }, [loadLostLeads]);
   useEffect(() => { loadNurtureLeads(); }, [loadNurtureLeads]);
+  useEffect(() => { loadAssignment(); }, [loadAssignment]);
 
   useEffect(() => {
     usersApi.getAll().then(r => setUsers(r.data)).catch(() => {});
@@ -180,10 +264,10 @@ export default function LeadsPage() {
   useEffect(() => {
     const socket = io('/', { withCredentials: true });
     socket.emit('join:dashboard');
-    socket.on('lead:new',     () => { loadLeads(); loadStats(); loadLostLeads(); loadNurtureLeads(); });
-    socket.on('lead:updated', () => { loadLeads(); loadStats(); loadLostLeads(); loadNurtureLeads(); });
+    socket.on('lead:new',     () => { loadLeads(); loadStats(); loadLostLeads(); loadNurtureLeads(); loadAssignment(); });
+    socket.on('lead:updated', () => { loadLeads(); loadStats(); loadLostLeads(); loadNurtureLeads(); loadAssignment(); });
     return () => socket.disconnect();
-  }, [loadLeads, loadStats, loadLostLeads, loadNurtureLeads]);
+  }, [loadLeads, loadStats, loadLostLeads, loadNurtureLeads, loadAssignment]);
 
   function setFilter(k, v) { setFilters(f => ({ ...f, [k]: v })); setPage(1); }
 
@@ -203,7 +287,7 @@ export default function LeadsPage() {
   }
 
   function clearAll() {
-    setFilters({ status: '', source: '', client_type: '', search: '', followup_date: '', slot_date: '' });
+    setFilters({ status: '', source: '', client_type: '', search: '', followup_date: '', slot_date: '', assigned_to: '' });
     setPage(1);
   }
 
@@ -319,6 +403,14 @@ export default function LeadsPage() {
           }
         />
       </div>
+
+      {/* ── Assignment Overview Card ─────────────────────────── */}
+      {assignment.length > 0 && <AssignmentCard
+        assignment={assignment}
+        activeKey={filters.assigned_to}
+        onSelect={key => { if (key) setFilter('assigned_to', filters.assigned_to === key ? '' : key); }}
+        onClear={() => setFilter('assigned_to', '')}
+      />}
 
       {/* ── Toolbar ──────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-2.5">
