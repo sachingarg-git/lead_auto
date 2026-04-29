@@ -733,6 +733,19 @@
             </div>
             <div class="field-error" id="err-q9">Please select your goal</div>
           </div>
+          <div class="q-divider"></div>
+          <!-- Q9 detail -->
+          <div class="question">
+            <div class="q-label">
+              <div class="q-num">9<span style="font-size:9px">b</span></div>
+              <div class="q-text">Tell us more about your vision
+                <span class="q-optional">OPTIONAL</span>
+                <span class="q-hint">What does success look like for you in 1 year?</span>
+              </div>
+            </div>
+            <textarea class="q-input" id="q9_more" name="q9_more" rows="3"
+                      placeholder="e.g. I want my team to handle 3x more orders without adding staff, and have full visibility on every order status in real time..."></textarea>
+          </div>
         </div>
         <div class="acc-nav">
           <button type="button" class="btn-skip" onclick="backTo(5)">← Back</button>
@@ -883,7 +896,10 @@
       const t = document.getElementById(`q${i}`);
       if (r || (t && t.value.trim())) n++;
     }
-    return n;
+    // q9_more is bonus — counts toward progress if filled
+    const extra = document.getElementById('q9_more');
+    if (extra && extra.value.trim()) n = Math.min(n + 0.5, TOTAL); // soft bonus
+    return Math.round(n);
   }
 
   function updateProgress() {
@@ -956,7 +972,7 @@
     const gr = name => document.querySelector(`[name="${name}"]:checked`)?.value || '';
     return { q1:g('q1'), q2:gr('q2'), q3:gr('q3'), q4:g('q4'),
              q5:gr('q5'), q6:gr('q6'), q7:g('q7'), q8:g('q8'),
-             q9:gr('q9'), q10:g('q10') };
+             q9:gr('q9'), q9_more:g('q9_more'), q10:g('q10') };
   }
 
   /* ── Submit ── */
