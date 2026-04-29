@@ -7,6 +7,19 @@ import api, { leadsApi, usersApi, dashboardApi } from '../services/api';
 import { format } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 
+/** Parse backend timestamp string as UTC → converts to local time (IST) on display */
+function parseUTC(val) {
+  if (!val) return null;
+  const s = String(val);
+  const normalized = /Z$|[+-]\d{2}:\d{2}$/.test(s) ? s : s.replace(' ', 'T') + 'Z';
+  const d = new Date(normalized);
+  return isNaN(d) ? null : d;
+}
+function fmtTs(val) {
+  const d = parseUTC(val);
+  return d ? format(d, 'dd MMM yyyy, hh:mm a') : '—';
+}
+
 const STATUSES = ['New', 'FollowUp', 'DemoGiven', 'Converted', 'Lost', 'Nurture'];
 
 /* ── Per-status style tokens ─────────────────────────────────── */
@@ -257,7 +270,7 @@ export default function LeadsPage() {
   useEffect(() => { loadAssignment(); }, [loadAssignment]);
 
   useEffect(() => {
-    usersApi.getAll().then(r => setUsers(r.data)).catch(() => {});
+    usersApi.getMembers().then(r => setUsers(r.data)).catch(() => {});
     api.get('/sources/names').then(r => setSources(r.data.map(s => s.name))).catch(() => {});
   }, []);
 
@@ -1691,7 +1704,7 @@ function FollowUpModal({ lead, onClose, onSuccess }) {
                         </span>
                         <span className="text-[10px] text-slate-300">·</span>
                         <span className="text-[10px] text-slate-400">
-                          {a.created_at && format(new Date(a.created_at), 'dd MMM yyyy, hh:mm a')}
+                          {a.created_at && fmtTs(a.created_at)}
                         </span>
                       </div>
                     </div>

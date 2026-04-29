@@ -43,12 +43,21 @@ const RESCHEDULE_TYPE_LABELS = {
   team_request:     'Team / Internal',
 };
 
+/** Parse a backend timestamp as UTC, display in user's local timezone (IST etc.) */
+function parseUTC(val) {
+  if (!val) return null;
+  const s = String(val);
+  // If no timezone info present, treat as UTC by appending Z
+  const normalized = /Z$|[+-]\d{2}:\d{2}$/.test(s) ? s : s.replace(' ', 'T') + 'Z';
+  const d = new Date(normalized);
+  return isNaN(d) ? null : d;
+}
+
 function fmtDate(val) {
   if (!val) return null;
-  // Backend returns IST as "YYYY-MM-DDTHH:MI:SS" (no Z) — parse directly to avoid UTC shift
   try {
-    const d = new Date(val);
-    return isNaN(d) ? String(val) : format(d, 'dd MMM yyyy, hh:mm a');
+    const d = parseUTC(val);
+    return d ? format(d, 'dd MMM yyyy, hh:mm a') : String(val);
   } catch { return String(val); }
 }
 
@@ -87,7 +96,7 @@ export default function LeadDetailPage() {
       const [leadRes, remRes, usersRes] = await Promise.all([
         leadsApi.getOne(id),
         remindersApi.getForLead(id),
-        usersApi.getAll(),
+        usersApi.getMembers(),
       ]);
       setLead(leadRes.data);
       setNotes(leadRes.data.notes || '');
@@ -413,7 +422,7 @@ export default function LeadDetailPage() {
               </div>
 
               <p className="text-slate-800 text-sm font-medium">
-                {format(new Date(lead.meeting_datetime), 'EEEE, MMMM d yyyy — HH:mm')}
+                {parseUTC(lead.meeting_datetime) ? format(parseUTC(lead.meeting_datetime), 'EEEE, MMMM d yyyy — HH:mm') : '—'}
               </p>
               {lead.meeting_link && (
                 <a href={lead.meeting_link} target="_blank" rel="noopener noreferrer"

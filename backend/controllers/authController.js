@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { query } = require('../config/database');
 const logger = require('../config/logger');
 
 /** Generate full session token */
@@ -124,4 +125,99 @@ async function me(req, res) {
   }
 }
 
-module.exports = { login, verifyPin, me };
+// ── Self-service: Change own password ────────────────────────
+async function changePassword(req, res) {
+  try {
+    const { currentPassword, newPassword, confirmPassword } = req.body;
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ error: 'New passwords do not match' });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    }
+    if (currentPassword === newPassword) {
+      return res.status(400).json({ error: 'New password must be different from current password' });
+    }
+
+    // Fetch password_hash (not included in findById for safety)
+    const row = await query(
+      'SELECT password_hash FROM "Users" WHERE id = @id',
+      { id: req.user.id }
+    ).then(r => r.recordset[0]);
+
+    if (!row) return res.status(404).json({ error: 'User not found' });
+
+    const valid = await User.verifyPassword(currentPassword, row.password_hash);
+    if (!valid) return res.status(401).json({ error: 'Current password is incorrect' });
+
+    await User.resetPassword(req.user.id, newPassword);
+    logger.info(`[auth] Password changed for user ${req.user.id}`);
+    res.json({ success: true, message: 'Password updated successfully' });
+  } catch (err) {
+    logger.error('changePassword error:', err);
+    res.status(500).json({ error: 'Failed to change password' });
+  }
+}
+
+// ── Self-service: Set / change own Green PIN ─────────────────
+async function changePinSelf(req, res) {
+  try {
+    const { currentPin, newPin, confirmPin } = req.body;
+    if (!newPin || !confirmPin) {
+      return res.status(400).json({ error: 'New PIN and confirmation are required' });
+    }
+    if (!/^\d{6}$/.test(String(newPin))) {
+      return res.status(400).json({ error: 'PIN must be exactly 6 digits (numbers only)' });
+    }
+    if (String(newPin) !== String(confirmPin)) {
+      return res.status(400).json({ error: 'PINs do not match' });
+    }
+
+    // Check current PIN state
+    const row = await query(
+      'SELECT pin_enabled, green_pin FROM "Users" WHERE id = @id',
+      { id: req.user.id }
+    ).then(r => r.recordset[0]);
+
+    if (!row) return res.status(404).json({ error: 'User not found' });
+
+    // If PIN is already set, verify current PIN before allowing change
+    if (row.pin_enabled && row.green_pin) {
+      if (!currentPin) {
+        return res.status(400).json({ error: 'Enter your current PIN to change it' });
+      }
+      const valid = await User.verifyPin(req.user.id, String(currentPin).trim());
+      if (!valid) return res.status(401).json({ error: 'Current PIN is incorrect' });
+    }
+
+    await User.setPin(req.user.id, String(newPin));
+    logger.info(`[auth] PIN set/changed for user ${req.user.id}`);
+    res.json({ success: true, message: 'PIN updated. 2FA is now active on your account.' });
+  } catch (err) {
+    logger.error('changePinSelf error:', err);
+    res.status(500).json({ error: 'Failed to update PIN' });
+  }
+}
+
+// ── Self-service: Remove own PIN ──────────────────────────────
+async function removePinSelf(req, res) {
+  try {
+    const { currentPin } = req.body;
+    if (!currentPin) return res.status(400).json({ error: 'Current PIN is required' });
+
+    const valid = await User.verifyPin(req.user.id, String(currentPin).trim());
+    if (!valid) return res.status(401).json({ error: 'Current PIN is incorrect' });
+
+    await User.removePin(req.user.id);
+    logger.info(`[auth] PIN removed for user ${req.user.id}`);
+    res.json({ success: true, message: 'PIN removed. 2FA is now disabled.' });
+  } catch (err) {
+    logger.error('removePinSelf error:', err);
+    res.status(500).json({ error: 'Failed to remove PIN' });
+  }
+}
+
+module.exports = { login, verifyPin, me, changePassword, changePinSelf, removePinSelf };

@@ -1,5 +1,5 @@
 const router = require('express').Router();
-const { login, verifyPin, me } = require('../controllers/authController');
+const { login, verifyPin, me, changePassword, changePinSelf, removePinSelf } = require('../controllers/authController');
 const { authenticate } = require('../middleware/auth');
 const rateLimit = require('express-rate-limit');
 
@@ -19,5 +19,10 @@ const pinLimiter = rateLimit({
 router.post('/login',      loginLimiter, login);
 router.post('/verify-pin', pinLimiter,   verifyPin);
 router.get('/me',          authenticate, me);
+
+// ── Self-service account management (authenticated user only) ─
+router.patch('/change-password', authenticate, changePassword);
+router.patch('/change-pin',      authenticate, changePinSelf);
+router.delete('/remove-pin',     authenticate, removePinSelf);
 
 module.exports = router;

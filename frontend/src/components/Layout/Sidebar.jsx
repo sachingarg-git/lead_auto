@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import clsx from 'clsx';
 
+// ── Icons ────────────────────────────────────────────────────
 const DashboardIcon = () => (
   <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
     <path strokeLinecap="round" strokeLinejoin="round"
@@ -47,44 +48,59 @@ const GuideIcon = () => (
       d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
   </svg>
 );
+const AccountIcon = () => (
+  <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
+    <path strokeLinecap="round" strokeLinejoin="round"
+      d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
 
 export default function Sidebar({ isOpen, onClose, desktopHidden = false }) {
-  const { user, isAdmin, logout } = useAuth();
+  const { user, can, logout } = useAuth();
   const { t } = useTranslation();
 
-  const navItems = [
-    { to: '/dashboard',        label: t('nav.dashboard'),   icon: <DashboardIcon /> },
-    { to: '/leads',            label: t('nav.leads'),       icon: <LeadsIcon /> },
-    { to: '/converted-leads',  label: 'Converted Leads',   icon: <ConvertedIcon /> },
-    { to: '/guide',            label: 'User Guide',         icon: <GuideIcon /> },
+  // ── Permission-based nav definition ──────────────────────────
+  // each item: always=visible to all | perm=required permission string
+  const mainNavDef = [
+    { to: '/dashboard',       label: t('nav.dashboard'),  icon: <DashboardIcon />, always: true },
+    { to: '/leads',           label: t('nav.leads'),      icon: <LeadsIcon />,     perm: 'leads:read' },
+    { to: '/converted-leads', label: 'Converted Leads',  icon: <ConvertedIcon />, perm: 'leads:read' },
+    { to: '/guide',           label: 'User Guide',        icon: <GuideIcon />,     always: true },
+    {
+      to: '/account',
+      label: 'My Account',
+      icon: <AccountIcon />,
+      always: true,
+      badge: !user?.pin_enabled ? '2FA' : null,   // nudge to set PIN
+    },
   ];
-  const adminNavItems = [
-    { to: '/sources',  label: t('nav.sources'),  icon: <SourcesIcon /> },
-    { to: '/admin',    label: t('nav.admin'),     icon: <AdminIcon /> },
-    { to: '/settings', label: t('nav.settings'), icon: <SettingsIcon /> },
+
+  // Administration section — only shown to users with full (*) permission
+  const adminNavDef = [
+    { to: '/sources',  label: t('nav.sources'),  icon: <SourcesIcon />, perm: '*' },
+    { to: '/admin',    label: t('nav.admin'),     icon: <AdminIcon />,   perm: '*' },
+    { to: '/settings', label: t('nav.settings'), icon: <SettingsIcon />, perm: '*' },
   ];
+
+  // Filter: keep items that are always-visible OR whose perm the user has
+  const navItems      = mainNavDef.filter(i => i.always || can(i.perm));
+  const adminNavItems = adminNavDef.filter(i => can(i.perm));
 
   return (
     <aside className={clsx(
       'fixed inset-y-0 left-0 z-30 flex flex-col w-64',
       'bg-white border-r border-slate-200/80',
       'transition-all duration-300 lg:relative',
-      // Desktop: hide (slide left + zero-width) when schedule panel is open
       desktopHidden
         ? 'lg:-translate-x-full lg:w-0 lg:overflow-hidden lg:opacity-0'
         : 'lg:translate-x-0 lg:w-64 lg:opacity-100',
-      // Mobile: controlled by isOpen
       isOpen ? 'translate-x-0' : '-translate-x-full'
     )}
       style={{ boxShadow: '2px 0 12px rgba(0,0,0,.04)' }}>
 
       {/* ── Logo ──────────────────────────────────────────── */}
       <div className="border-b border-slate-100 shrink-0 bg-white overflow-hidden">
-        <img
-          src="/logo.jpeg"
-          alt="Wizone AI Labs"
-          className="w-full h-auto block"
-        />
+        <img src="/logo.jpeg" alt="Wizone AI Labs" className="w-full h-auto block" />
       </div>
 
       {/* ── Navigation ────────────────────────────────────── */}
@@ -97,11 +113,17 @@ export default function Sidebar({ isOpen, onClose, desktopHidden = false }) {
           <NavLink key={item.to} to={item.to} onClick={onClose}
             className={({ isActive }) => clsx('sidebar-link', isActive && 'active')}>
             {item.icon}
-            <span>{item.label}</span>
+            <span className="flex-1">{item.label}</span>
+            {item.badge && (
+              <span className="text-[9px] font-bold bg-amber-400 text-amber-900 px-1.5 py-0.5 rounded-full leading-none">
+                {item.badge}
+              </span>
+            )}
           </NavLink>
         ))}
 
-        {isAdmin && (
+        {/* Administration — only renders if user has any admin items */}
+        {adminNavItems.length > 0 && (
           <>
             <p className="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-[0.12em] mt-5 mb-2 pt-3 border-t border-slate-100">
               {t('nav.administration')}
@@ -128,9 +150,9 @@ export default function Sidebar({ isOpen, onClose, desktopHidden = false }) {
             <div className="text-sm font-semibold text-slate-800 truncate">{user?.name}</div>
             <div className="text-[11px] text-slate-500 font-medium truncate capitalize">{user?.role_name}</div>
           </div>
+          {/* Logout */}
           <button onClick={logout}
-            className="text-slate-400 hover:text-red-500 transition-colors p-1 rounded-lg
-                       hover:bg-red-50"
+            className="text-slate-400 hover:text-red-500 transition-colors p-1 rounded-lg hover:bg-red-50"
             title={t('nav.signOut')}>
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round"

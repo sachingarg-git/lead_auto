@@ -45,9 +45,12 @@ api.interceptors.response.use(
 
 // ── Auth ─────────────────────────────────────────────────────
 export const authApi = {
-  login:     (email, password)   => api.post('/auth/login', { email, password }),
-  verifyPin: (temp_token, pin)   => api.post('/auth/verify-pin', { temp_token, pin }),
-  me:        ()                  => api.get('/auth/me'),
+  login:          (email, password)             => api.post('/auth/login', { email, password }),
+  verifyPin:      (temp_token, pin)             => api.post('/auth/verify-pin', { temp_token, pin }),
+  me:             ()                            => api.get('/auth/me'),
+  changePassword: (data)                        => api.patch('/auth/change-password', data),
+  changePin:      (data)                        => api.patch('/auth/change-pin', data),
+  removePin:      (currentPin)                  => api.delete('/auth/remove-pin', { data: { currentPin } }),
 };
 
 // ── Leads ────────────────────────────────────────────────────
@@ -79,7 +82,8 @@ export const dashboardApi = {
 
 // ── Users ─────────────────────────────────────────────────────
 export const usersApi = {
-  getAll:         ()         => api.get('/users'),
+  getAll:         ()         => api.get('/users'),          // admin only — full list
+  getMembers:     ()         => api.get('/users/members'),  // all users — id+name only for dropdowns
   create:         (data)     => api.post('/users', data),
   update:         (id, data) => api.patch(`/users/${id}`, data),
   toggle:         (id)       => api.patch(`/users/${id}/toggle`),
