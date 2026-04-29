@@ -78,18 +78,15 @@ async function sendWelcomeMessages(lead) {
     { id: lead.id }
   );
 
-  // ── Send questionnaire email 2 minutes after welcome ─────────
-  // Only if lead has email and questionnaire feature is enabled
+  // ── Send questionnaire email immediately after welcome ───────
   if (lead.email) {
-    setTimeout(async () => {
-      try {
-        const token = generateToken(lead.id);
-        await sendQuestionnaireEmail(lead, token);
-        logger.info(`[communicationService] Questionnaire email sent to lead ${lead.id}`);
-      } catch (err) {
-        logger.warn(`[communicationService] Questionnaire email failed for lead ${lead.id}:`, err.message);
-      }
-    }, 2 * 60 * 1000); // 2-minute delay so welcome lands first
+    try {
+      const token = generateToken(lead.id);
+      await sendQuestionnaireEmail(lead, token);
+      logger.info(`[communicationService] Questionnaire email sent to lead ${lead.id}`);
+    } catch (err) {
+      logger.warn(`[communicationService] Questionnaire email failed for lead ${lead.id}:`, err.message);
+    }
   }
 }
 

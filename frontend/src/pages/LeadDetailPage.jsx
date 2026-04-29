@@ -471,11 +471,72 @@ export default function LeadDetailPage() {
                   </button>
                 </div>
               </div>
-            ) : (
-              <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">
-                {lead.notes || <span className="text-slate-600 italic">{t('leadDetail.noNotes')}</span>}
-              </p>
-            )}
+            ) : (() => {
+              const raw = lead.notes || '';
+              const qIdx = raw.indexOf('📋 PRE-MEETING QUESTIONNAIRE');
+              const plainNotes = qIdx > 0 ? raw.slice(0, qIdx).trim() : (qIdx === 0 ? '' : raw);
+              const qBlock     = qIdx >= 0 ? raw.slice(qIdx) : null;
+
+              // Parse questionnaire block into sections
+              const parseQ = (block) => {
+                const sections = [];
+                const sectionRe = /\[([^\]]+)\]\n([\s\S]*?)(?=\n\[|$)/g;
+                let m;
+                while ((m = sectionRe.exec(block)) !== null) {
+                  const lines = m[2].trim().split('\n').filter(Boolean);
+                  sections.push({ title: m[1], lines });
+                }
+                return sections;
+              };
+
+              return (
+                <>
+                  {plainNotes && (
+                    <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed mb-3">{plainNotes}</p>
+                  )}
+                  {!plainNotes && !qBlock && (
+                    <span className="text-slate-400 italic text-sm">{t('leadDetail.noNotes')}</span>
+                  )}
+                  {qBlock && (() => {
+                    const headerLine = qBlock.split('\n')[0];
+                    const sections   = parseQ(qBlock);
+                    return (
+                      <div className="mt-1 rounded-xl border border-amber-200 bg-amber-50 overflow-hidden">
+                        {/* Header */}
+                        <div className="flex items-center gap-2 px-4 py-2.5 bg-amber-100 border-b border-amber-200">
+                          <span className="text-base">📋</span>
+                          <div>
+                            <p className="text-xs font-bold text-amber-800 uppercase tracking-wide">Pre-Meeting Questionnaire</p>
+                            <p className="text-[10px] text-amber-600">{headerLine.replace('📋 PRE-MEETING QUESTIONNAIRE — ','')}</p>
+                          </div>
+                        </div>
+                        {/* Sections */}
+                        <div className="divide-y divide-amber-100">
+                          {sections.map((sec, si) => (
+                            <div key={si} className="px-4 py-3">
+                              <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wider mb-2">{sec.title}</p>
+                              <div className="space-y-1.5">
+                                {sec.lines.map((line, li) => {
+                                  const colonIdx = line.indexOf(':');
+                                  const label = colonIdx > -1 ? line.slice(0, colonIdx).trim() : line;
+                                  const value = colonIdx > -1 ? line.slice(colonIdx + 1).trim() : '';
+                                  return (
+                                    <div key={li} className="flex gap-2">
+                                      <span className="text-[11px] font-semibold text-slate-500 min-w-[120px] shrink-0">{label}:</span>
+                                      <span className="text-[11px] text-slate-700 font-medium break-words">{value || '—'}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </>
+              );
+            })()}
           </div>
 
           {/* ── Automation Timeline ───────────────────────── */}
