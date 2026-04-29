@@ -1430,11 +1430,12 @@ function LeadRow({ lead, users, onFollowUp, onDelete, onAssigned, onEmail, onWha
 
 /* ── Activity type config ─────────────────────────────────────── */
 const ACTIVITY_CFG = {
-  followup:      { icon: '💬', label: 'Follow-up',     bg: '#fffbeb', border: '#fcd34d', color: '#b45309' },
-  status_change: { icon: '🔄', label: 'Status Change', bg: '#f0f9ff', border: '#bae6fd', color: '#0369a1' },
-  assigned:      { icon: '👤', label: 'Assigned',      bg: '#eef2ff', border: '#c7d2fe', color: '#4338ca' },
-  edit:          { icon: '✏️', label: 'Edited',        bg: '#f8fafc', border: '#e2e8f0', color: '#475569' },
-  created:       { icon: '🚀', label: 'Created',       bg: '#ecfdf5', border: '#6ee7b7', color: '#047857' },
+  followup:       { icon: '💬', label: 'Follow-up',       bg: '#fffbeb', border: '#fcd34d', color: '#b45309' },
+  status_change:  { icon: '🔄', label: 'Status Change',   bg: '#f0f9ff', border: '#bae6fd', color: '#0369a1' },
+  assigned:       { icon: '👤', label: 'Assigned',        bg: '#eef2ff', border: '#c7d2fe', color: '#4338ca' },
+  edit:           { icon: '✏️', label: 'Edited',          bg: '#f8fafc', border: '#e2e8f0', color: '#475569' },
+  created:        { icon: '🚀', label: 'Created',         bg: '#ecfdf5', border: '#6ee7b7', color: '#047857' },
+  questionnaire:  { icon: '📋', label: 'Questionnaire',   bg: '#fef9c3', border: '#fde68a', color: '#92400e' },
 };
 
 /* ── FollowUp Modal ───────────────────────────────────────────── */
@@ -1658,8 +1659,20 @@ function FollowUpModal({ lead, onClose, onSuccess }) {
                         </div>
                       )}
 
-                      {/* Note / description */}
-                      {a.note && (
+                      {/* Note / description — questionnaire gets a collapsible pre-formatted block */}
+                      {a.note && a.action_type === 'questionnaire' ? (
+                        <details className="mt-1">
+                          <summary className="text-[11px] font-semibold cursor-pointer text-amber-700
+                                             bg-amber-50 rounded px-2 py-1 inline-flex items-center gap-1">
+                            📋 View Full Answers
+                          </summary>
+                          <pre className="text-[11px] text-slate-700 leading-relaxed bg-white/80
+                                         rounded-lg px-2.5 py-2 border border-amber-100 mt-1
+                                         whitespace-pre-wrap font-mono overflow-x-auto max-h-64 overflow-y-auto">
+                            {a.note}
+                          </pre>
+                        </details>
+                      ) : a.note && (
                         <p className="text-[12px] text-slate-700 leading-relaxed bg-white/70
                                       rounded-lg px-2.5 py-1.5 border border-white mt-1">
                           {a.note}

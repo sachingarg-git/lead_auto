@@ -507,9 +507,84 @@ async function sendMeetLinkEmail(lead) {
   return sendEmail({ to: lead.email, subject: renderedSubject, html });
 }
 
+/**
+ * Send the pre-meeting questionnaire email.
+ * Call this AFTER the welcome email — it carries a signed token so the
+ * questionnaire page can auto-fetch the lead's name.
+ *
+ * @param {object} lead  — full lead record
+ * @param {string} token — signed JWT from routes/public.generateToken(lead.id)
+ */
+async function sendQuestionnaireEmail(lead, token) {
+  if (!lead.email) {
+    logger.warn(`[sendQuestionnaireEmail] Lead ${lead.id} has no email — skipping`);
+    return null;
+  }
+
+  const companyName = await getCompanyName();
+  const baseUrl     = process.env.FRONTEND_URL || 'https://lead.wizone.ai';
+  const link        = `${baseUrl}/questionnaire.html?t=${encodeURIComponent(token)}`;
+  const firstName   = (lead.full_name || 'there').split(' ')[0];
+
+  const bodyHtml = `
+    <p style="margin:0 0 16px;font-size:16px;font-weight:600;color:#0f172a;">
+      Hi ${firstName}! 👋
+    </p>
+    <p style="margin:0 0 16px;color:#374151;line-height:1.7;">
+      Thank you for reaching out to <strong>${companyName}</strong>.
+      We're excited about your upcoming discovery call!
+    </p>
+    <p style="margin:0 0 20px;color:#374151;line-height:1.7;">
+      To make the most of your time with us, we've put together a quick
+      <strong>2-minute questionnaire</strong>. Your answers will help us come
+      fully prepared with solutions that are relevant to your specific business.
+    </p>
+
+    <!-- Value highlights -->
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
+      <tr>
+        <td style="background:#f0f9ff;border-radius:10px;padding:16px 20px;border-left:4px solid #0ea5e9;">
+          <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#0369a1;">What to expect:</p>
+          <p style="margin:0 0 4px;font-size:13px;color:#374151;">✅ &nbsp;Takes less than 2 minutes</p>
+          <p style="margin:0 0 4px;font-size:13px;color:#374151;">✅ &nbsp;10 simple questions about your business</p>
+          <p style="margin:0 0 4px;font-size:13px;color:#374151;">✅ &nbsp;Helps us skip the basics and jump to your solutions</p>
+          <p style="margin:0;font-size:13px;color:#374151;">✅ &nbsp;100% confidential — only shared with our team</p>
+        </td>
+      </tr>
+    </table>
+
+    <!-- CTA Button -->
+    <div style="text-align:center;margin:28px 0;">
+      <a href="${link}"
+         style="display:inline-block;background:linear-gradient(135deg,#0ea5e9,#0284c7);
+                color:#ffffff;padding:16px 40px;border-radius:10px;
+                text-decoration:none;font-weight:700;font-size:16px;
+                letter-spacing:0.3px;box-shadow:0 4px 14px rgba(14,165,233,0.4);">
+        📋 &nbsp;Fill Pre-Meeting Questions →
+      </a>
+      <p style="margin:12px 0 0;font-size:11px;color:#94a3b8;">
+        Button not working? <a href="${link}" style="color:#0ea5e9;">Click here</a>
+      </p>
+    </div>
+
+    <p style="margin:0 0 8px;color:#64748b;font-size:13px;line-height:1.7;">
+      This link is secure and unique to you — no login required.
+    </p>
+    <p style="margin:0;color:#64748b;font-size:13px;line-height:1.7;">
+      Looking forward to a productive conversation!<br><br>
+      <strong>${companyName} Team</strong>
+    </p>
+  `;
+
+  const html    = wrapEmailHtml(bodyHtml, companyName);
+  const subject = `📋 Quick Questions Before Your Call — ${companyName}`;
+
+  return sendEmail({ to: lead.email, subject, html });
+}
+
 module.exports = {
   sendEmail, testEmail, resetTransporter,
   buildWelcomeEmail, buildMeetingReminderEmail, buildFollowUpEmail,
   buildRescheduleEmail, formatSlotDate, formatSlotTime, renderTemplate, wrapEmailHtml,
-  sendMeetLinkEmail,
+  sendMeetLinkEmail, sendQuestionnaireEmail,
 };

@@ -2,11 +2,12 @@
  * Central Communication Orchestrator
  * Coordinates Email + WhatsApp + Telegram for each automation event.
  */
-const { sendEmail, buildWelcomeEmail, buildMeetingReminderEmail, buildFollowUpEmail } = require('./emailService');
+const { sendEmail, buildWelcomeEmail, buildMeetingReminderEmail, buildFollowUpEmail, sendQuestionnaireEmail } = require('./emailService');
 const { sendWhatsApp, buildWelcomeWA, buildMeetingReminderWA, buildFollowUpWA } = require('./whatsappService');
 const { sendTelegram, notifyAdminNewLead, notifyAdminReminder } = require('./telegramService');
 const { query } = require('../config/database');
 const logger = require('../config/logger');
+const { generateToken } = require('../routes/public');
 
 /**
  * Log a communication event in DB.
@@ -76,6 +77,20 @@ async function sendWelcomeMessages(lead) {
     'UPDATE "Leads" SET welcome_sent = true, last_contacted = NOW() WHERE id = @id',
     { id: lead.id }
   );
+
+  // ── Send questionnaire email 2 minutes after welcome ─────────
+  // Only if lead has email and questionnaire feature is enabled
+  if (lead.email) {
+    setTimeout(async () => {
+      try {
+        const token = generateToken(lead.id);
+        await sendQuestionnaireEmail(lead, token);
+        logger.info(`[communicationService] Questionnaire email sent to lead ${lead.id}`);
+      } catch (err) {
+        logger.warn(`[communicationService] Questionnaire email failed for lead ${lead.id}:`, err.message);
+      }
+    }, 2 * 60 * 1000); // 2-minute delay so welcome lands first
+  }
 }
 
 /**

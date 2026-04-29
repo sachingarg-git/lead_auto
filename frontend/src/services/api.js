@@ -65,8 +65,9 @@ export const leadsApi = {
   getActivity:    (id)             => api.get(`/leads/${id}/activity`),
   sendEmail:      (id, data)       => api.post(`/leads/${id}/send-email`, data),
   sendWhatsApp:   (id, data)       => api.post(`/leads/${id}/send-whatsapp`, data),
-  setSlot:          (id, data) => api.post(`/leads/${id}/set-slot`, data),
-  generateMeetLink: (id)       => api.post(`/leads/${id}/generate-meet-link`),
+  setSlot:            (id, data) => api.post(`/leads/${id}/set-slot`, data),
+  generateMeetLink:   (id)       => api.post(`/leads/${id}/generate-meet-link`),
+  sendQuestionnaire:  (id)       => api.post(`/leads/${id}/send-questionnaire`),
 };
 
 // ── Dashboard ─────────────────────────────────────────────────

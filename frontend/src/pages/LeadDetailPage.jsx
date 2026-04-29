@@ -74,6 +74,8 @@ export default function LeadDetailPage() {
   const [sendingEmail,     setSendingEmail]     = useState(false);
   const [loadingPreview,   setLoadingPreview]   = useState(false);
 
+  const [sendingQuestionnaire, setSendingQuestionnaire] = useState(false);
+
   const [slotDate,       setSlotDate]       = useState('');
   const [bookedSlots,    setBookedSlots]     = useState([]);
   const [loadingSlots,   setLoadingSlots]    = useState(false);
@@ -136,6 +138,16 @@ export default function LeadDetailPage() {
       const r = await emailTemplatesApi.getAll();
       setEmailTemplates(r.data);
     } catch { toast.error('Failed to load templates'); }
+  }
+
+  async function handleSendQuestionnaire() {
+    setSendingQuestionnaire(true);
+    try {
+      const r = await leadsApi.sendQuestionnaire(lead.id);
+      toast.success(`📋 Questionnaire email sent to ${r.data.sent_to}`);
+    } catch (err) {
+      toast.error(err?.response?.data?.error || 'Failed to send questionnaire email');
+    } finally { setSendingQuestionnaire(false); }
   }
 
   async function handleTemplateSelect(id) {
@@ -674,9 +686,22 @@ export default function LeadDetailPage() {
               <p className="text-xs text-slate-500 mb-3">Manually send a template email to this lead.</p>
               <button onClick={openEmailModal}
                 className="w-full h-9 rounded-xl bg-brand-500 hover:bg-brand-600 text-white text-sm font-bold
-                           flex items-center justify-center gap-2 transition-all">
+                           flex items-center justify-center gap-2 transition-all mb-2">
                 📧 Send Template Email
               </button>
+              <button
+                onClick={handleSendQuestionnaire}
+                disabled={sendingQuestionnaire}
+                className="w-full h-9 rounded-xl border-2 border-amber-400 bg-amber-50 hover:bg-amber-100
+                           text-amber-800 text-sm font-bold flex items-center justify-center gap-2
+                           transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                {sendingQuestionnaire
+                  ? <><span className="w-4 h-4 border-2 border-amber-600 border-t-transparent rounded-full animate-spin"/>Sending...</>
+                  : <>📋 Send Questionnaire Email</>}
+              </button>
+              <p className="text-[10px] text-slate-400 mt-1.5 text-center">
+                Sends the pre-meeting question form link to this lead's email
+              </p>
             </div>
           )}
         </div>

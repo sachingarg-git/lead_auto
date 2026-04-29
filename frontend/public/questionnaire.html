@@ -1,0 +1,1031 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Pre-Meeting Discovery — Wizone AI Labs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet"/>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --cyan:#00E5FF;--cyan-dim:#0097B2;--cyan-dk:#006E82;
+      --cyan-glow:rgba(0,229,255,.18);--cyan-border:rgba(0,229,255,.22);
+      --black:#030508;--dark:#0D1117;--surface:#111827;--surface2:#1a2332;
+      --border:rgba(0,229,255,.18);--text:#F0F4FF;--muted:#7A8AA0;
+      --success:#00E5A0;--gold:#f59e0b;
+    }
+    html{scroll-behavior:smooth}
+    body{
+      font-family:'Barlow',sans-serif;
+      background:var(--black);
+      color:var(--text);
+      min-height:100vh;
+      overflow-x:hidden;
+    }
+    body::before{
+      content:'';position:fixed;inset:0;
+      background:
+        radial-gradient(ellipse 80% 60% at 50% 110%,rgba(0,229,255,.12) 0%,transparent 60%),
+        radial-gradient(ellipse 50% 40% at 5%  10%, rgba(0,180,212,.08) 0%,transparent 55%),
+        radial-gradient(ellipse 40% 30% at 95% 5%,  rgba(0,229,255,.06) 0%,transparent 50%);
+      pointer-events:none;z-index:0;
+    }
+
+    /* ── HEADER ───────────────────────────────────────── */
+    .hdr{
+      position:sticky;top:0;z-index:200;
+      background:rgba(3,5,8,.97);
+      border-bottom:1.5px solid var(--cyan-border);
+      backdrop-filter:blur(20px);
+      display:flex;align-items:center;gap:16px;
+      padding:10px 40px;
+      box-shadow:0 2px 40px rgba(0,0,0,.7),0 0 1px rgba(0,229,255,.15);
+    }
+    .hdr-logo{height:54px;width:auto;object-fit:contain}
+    .hdr-logo-fb{display:none;align-items:center;gap:10px}
+    .hdr-icon{
+      width:42px;height:42px;border-radius:10px;flex-shrink:0;
+      background:linear-gradient(135deg,#00E5FF,#0097B2);
+      display:flex;align-items:center;justify-content:center;
+      font-family:'Barlow Condensed',sans-serif;font-weight:900;
+      font-size:20px;color:#030508;
+      box-shadow:0 0 18px rgba(0,229,255,.4);
+    }
+    .hdr-texts{line-height:1.15}
+    .hdr-name{font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:800;color:var(--text);letter-spacing:.5px}
+    .hdr-sub{font-size:9px;font-weight:700;color:var(--cyan);letter-spacing:.18em;text-transform:uppercase}
+    .hdr-badge{
+      margin-left:auto;font-size:11px;font-weight:600;color:var(--cyan);
+      border:1px solid var(--cyan-border);background:rgba(0,229,255,.06);
+      border-radius:20px;padding:5px 14px;white-space:nowrap;letter-spacing:.03em;
+    }
+
+    /* ── HERO ─────────────────────────────────────────── */
+    .hero{
+      text-align:center;padding:56px 24px 48px;
+      border-bottom:1px solid rgba(0,229,255,.1);
+      position:relative;z-index:1;
+    }
+    .hero-tag{
+      display:inline-flex;align-items:center;gap:7px;
+      border:1px solid var(--cyan-border);background:rgba(0,229,255,.06);
+      border-radius:20px;padding:5px 16px;
+      font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;
+      color:var(--cyan);margin-bottom:22px;
+    }
+    .hero-dot{width:6px;height:6px;background:var(--cyan);border-radius:50%;box-shadow:0 0 8px var(--cyan);animation:blink 2s infinite}
+    @keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+    .hero-title{
+      font-family:'Barlow Condensed',sans-serif;
+      font-size:clamp(34px,5vw,56px);font-weight:800;
+      letter-spacing:-1px;line-height:1.05;margin-bottom:14px;
+    }
+    .hero-title .hi{color:var(--cyan);text-shadow:0 0 24px rgba(0,229,255,.4)}
+    .hero-sub{
+      font-size:15px;color:var(--muted);
+      max-width:520px;margin:0 auto 28px;line-height:1.75;
+    }
+    .hero-sub em{color:var(--text);font-style:normal;font-weight:600}
+    .hero-pills{display:flex;justify-content:center;flex-wrap:wrap;gap:10px}
+    .hero-pill{
+      display:inline-flex;align-items:center;gap:7px;
+      font-size:12px;font-weight:600;color:var(--text);
+      background:var(--surface);border:1px solid var(--border);
+      border-radius:8px;padding:7px 16px;letter-spacing:.02em;
+    }
+    .hero-pill .d{width:7px;height:7px;background:var(--cyan);border-radius:50%;box-shadow:0 0 6px var(--cyan)}
+
+    /* ── PROGRESS BAR ─────────────────────────────────── */
+    .prog-bar-wrap{
+      position:sticky;top:67px;z-index:100;
+      background:rgba(3,5,8,.96);border-bottom:1px solid var(--border);
+      backdrop-filter:blur(16px);padding:12px 40px;
+    }
+    .prog-meta{display:flex;justify-content:space-between;margin-bottom:7px}
+    .prog-lbl{font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.08em}
+    .prog-pct{font-size:11px;font-weight:700;color:var(--cyan)}
+    .prog-bg{height:3px;background:rgba(0,229,255,.1);border-radius:10px;overflow:hidden}
+    .prog-fill{
+      height:100%;width:0%;border-radius:10px;
+      background:linear-gradient(90deg,var(--cyan-dim),var(--cyan));
+      transition:width .4s ease;box-shadow:0 0 10px rgba(0,229,255,.5);
+    }
+
+    /* ── LAYOUT: sidebar + content ────────────────────── */
+    .page-body{
+      display:flex;align-items:flex-start;
+      max-width:1400px;margin:0 auto;
+      padding:40px 32px 80px;
+      gap:32px;
+      position:relative;z-index:1;
+    }
+
+    /* ── SIDEBAR ──────────────────────────────────────── */
+    .sidebar{
+      width:260px;flex-shrink:0;
+      position:sticky;top:130px;
+    }
+    .sb-title{
+      font-family:'Barlow Condensed',sans-serif;
+      font-size:11px;font-weight:700;color:var(--cyan);
+      letter-spacing:.18em;text-transform:uppercase;
+      margin-bottom:16px;padding-bottom:10px;
+      border-bottom:1px solid var(--border);
+    }
+    .sb-item{
+      display:flex;align-items:center;gap:10px;
+      padding:10px 12px;border-radius:8px;
+      cursor:pointer;transition:all .2s;margin-bottom:4px;
+      border:1px solid transparent;
+    }
+    .sb-item:hover{background:rgba(0,229,255,.04);border-color:var(--border)}
+    .sb-item.active{background:rgba(0,229,255,.08);border-color:rgba(0,229,255,.3)}
+    .sb-num{
+      width:26px;height:26px;min-width:26px;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+      font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:800;
+      background:var(--surface2);color:var(--muted);border:1.5px solid var(--border);
+      transition:all .2s;
+    }
+    .sb-item.active .sb-num,.sb-item.done .sb-num{
+      background:linear-gradient(135deg,var(--cyan-dim),var(--cyan));
+      color:#030508;border-color:transparent;
+      box-shadow:0 0 10px rgba(0,229,255,.4);
+    }
+    .sb-item.done .sb-num::after{content:'✓'}
+    .sb-item.done:not(.active) .sb-num{background:rgba(0,229,255,.2);color:var(--cyan)}
+    .sb-label{font-size:13px;font-weight:500;color:var(--muted);transition:color .2s}
+    .sb-item.active .sb-label{color:var(--text);font-weight:600}
+    .sb-item.done:not(.active) .sb-label{color:var(--cyan)}
+    .sb-check{margin-left:auto;font-size:13px;color:var(--cyan);display:none}
+    .sb-item.done .sb-check{display:block}
+
+    /* ── ACCORDION SECTIONS ───────────────────────────── */
+    .form-area{flex:1;min-width:0}
+
+    .acc-section{
+      background:var(--surface);
+      border:1px solid var(--border);
+      border-radius:14px;
+      margin-bottom:14px;
+      overflow:hidden;
+      transition:border-color .25s;
+    }
+    .acc-section.open{border-color:rgba(0,229,255,.4);box-shadow:0 0 30px rgba(0,229,255,.06)}
+    .acc-section.completed{border-color:rgba(0,229,255,.25)}
+
+    .acc-head{
+      display:flex;align-items:center;gap:12px;
+      padding:16px 22px;cursor:pointer;
+      background:rgba(0,229,255,.02);
+      border-bottom:1px solid transparent;
+      transition:background .2s;user-select:none;
+    }
+    .acc-section.open .acc-head{
+      background:rgba(0,229,255,.05);
+      border-bottom-color:var(--border);
+    }
+    .acc-head:hover{background:rgba(0,229,255,.04)}
+    .acc-icon{
+      width:32px;height:32px;border-radius:8px;flex-shrink:0;
+      background:linear-gradient(135deg,var(--cyan-dim),var(--cyan));
+      display:flex;align-items:center;justify-content:center;
+      box-shadow:0 0 12px rgba(0,229,255,.3);
+      transition:all .2s;
+    }
+    .acc-section:not(.open) .acc-icon{background:var(--surface2);box-shadow:none}
+    .acc-icon svg{width:16px;height:16px;stroke:#030508;stroke-width:2.5}
+    .acc-section:not(.open) .acc-icon svg{stroke:var(--muted)}
+    .acc-meta{flex:1}
+    .acc-section-lbl{
+      font-size:10px;font-weight:700;color:var(--muted);
+      letter-spacing:.15em;text-transform:uppercase;margin-bottom:2px;
+    }
+    .acc-section.open .acc-section-lbl{color:var(--cyan)}
+    .acc-title{font-size:15px;font-weight:700;color:var(--text)}
+    .acc-done-badge{
+      display:none;font-size:10px;font-weight:700;
+      color:var(--cyan);border:1px solid rgba(0,229,255,.3);
+      background:rgba(0,229,255,.08);border-radius:6px;
+      padding:2px 8px;letter-spacing:.05em;
+    }
+    .acc-section.completed .acc-done-badge{display:inline-block}
+    .acc-chevron{
+      margin-left:auto;width:20px;height:20px;color:var(--muted);
+      transition:transform .3s;flex-shrink:0;
+    }
+    .acc-section.open .acc-chevron{transform:rotate(180deg);color:var(--cyan)}
+
+    .acc-body{
+      max-height:0;overflow:hidden;
+      transition:max-height .4s cubic-bezier(0.4,0,0.2,1);
+    }
+    .acc-section.open .acc-body{max-height:2000px}
+    .acc-inner{padding:28px 28px 24px}
+
+    /* ── QUESTIONS ────────────────────────────────────── */
+    .question{margin-bottom:28px}
+    .question:last-child{margin-bottom:0}
+    .q-label{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}
+    .q-num{
+      width:28px;height:28px;min-width:28px;border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+      font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:800;
+      background:linear-gradient(135deg,var(--cyan-dim),var(--cyan));
+      color:#030508;margin-top:1px;box-shadow:0 0 10px rgba(0,229,255,.4);
+    }
+    .q-num.gold{background:linear-gradient(135deg,#f59e0b,#d97706);box-shadow:0 0 10px rgba(245,158,11,.4)}
+    .q-text{font-size:15px;font-weight:600;color:var(--text);line-height:1.45}
+    .q-hint{font-size:12px;color:var(--muted);font-weight:400;display:block;margin-top:3px}
+    .q-optional{
+      font-size:10px;font-weight:700;color:#f59e0b;
+      border:1px solid rgba(245,158,11,.3);background:rgba(245,158,11,.1);
+      border-radius:5px;padding:1px 6px;margin-left:8px;vertical-align:middle;
+    }
+
+    .q-input{
+      width:100%;background:var(--dark);
+      border:1.5px solid rgba(0,229,255,.2);border-radius:10px;
+      padding:13px 16px;font-size:14px;font-family:'Barlow',sans-serif;
+      color:var(--text);outline:none;resize:none;
+      transition:border-color .2s,box-shadow .2s;
+    }
+    .q-input::placeholder{color:rgba(122,138,160,.55)}
+    .q-input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(0,229,255,.1),0 0 18px rgba(0,229,255,.08)}
+    .q-input.error{border-color:#ef4444}
+
+    .q-chips{display:flex;flex-wrap:wrap;gap:8px}
+    .q-chip-label{cursor:pointer}
+    .q-chip-label input{display:none}
+    .q-chip-btn{
+      display:inline-flex;align-items:center;gap:7px;
+      padding:9px 18px;border-radius:8px;
+      border:1.5px solid rgba(0,229,255,.18);background:var(--dark);
+      font-size:13px;font-weight:700;color:var(--text);
+      font-family:'Barlow',sans-serif;transition:all .18s;user-select:none;
+    }
+    .q-chip-btn:hover{border-color:var(--cyan);color:var(--cyan);background:rgba(0,229,255,.06)}
+    .q-chip-label input:checked + .q-chip-btn{
+      border-color:var(--cyan);background:rgba(0,229,255,.12);
+      color:var(--cyan);font-weight:700;
+      box-shadow:0 0 14px rgba(0,229,255,.2);
+    }
+
+    .q-divider{height:1px;background:var(--border);margin:22px 0}
+
+    .field-error{font-size:11px;color:#ef4444;font-weight:600;margin-top:6px;display:none}
+
+    /* ── NAV BUTTONS ──────────────────────────────────── */
+    .acc-nav{
+      display:flex;justify-content:space-between;align-items:center;
+      padding:16px 28px;border-top:1px solid var(--border);
+      background:rgba(0,229,255,.02);
+    }
+    .btn-next{
+      display:inline-flex;align-items:center;gap:8px;
+      background:linear-gradient(135deg,#00E5FF,#0097B2);
+      color:#030508;border:none;border-radius:8px;
+      padding:11px 26px;font-size:13px;font-weight:800;
+      font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;text-transform:uppercase;
+      cursor:pointer;transition:all .2s;
+      box-shadow:0 0 18px rgba(0,229,255,.35);
+    }
+    .btn-next:hover{transform:translateY(-1px);box-shadow:0 0 28px rgba(0,229,255,.5)}
+    .btn-skip{
+      font-size:12px;font-weight:600;color:var(--muted);
+      background:none;border:none;cursor:pointer;
+      font-family:'Barlow',sans-serif;letter-spacing:.03em;
+      transition:color .2s;
+    }
+    .btn-skip:hover{color:var(--cyan)}
+
+    /* ── SUBMIT ───────────────────────────────────────── */
+    .submit-wrap{
+      background:var(--surface);border:1px solid var(--border);
+      border-radius:14px;padding:32px 28px;text-align:center;
+      margin-top:4px;
+    }
+    .submit-note{font-size:13px;color:var(--muted);margin-bottom:22px;line-height:1.65}
+    .btn-submit{
+      display:inline-flex;align-items:center;gap:10px;
+      background:linear-gradient(135deg,#00E5FF,#0097B2);color:#030508;
+      border:none;border-radius:8px;padding:16px 48px;
+      font-size:16px;font-weight:800;
+      font-family:'Barlow Condensed',sans-serif;letter-spacing:2px;text-transform:uppercase;
+      cursor:pointer;transition:all .2s;
+      box-shadow:0 0 28px rgba(0,229,255,.45);
+    }
+    .btn-submit:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 0 40px rgba(0,229,255,.65)}
+    .btn-submit:disabled{opacity:.5;cursor:not-allowed}
+    .btn-spinner{
+      width:17px;height:17px;border:2.5px solid rgba(3,5,8,.3);
+      border-top-color:#030508;border-radius:50%;
+      animation:spin .7s linear infinite;
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .error-banner{
+      display:none;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);
+      border-radius:10px;padding:12px 16px;color:#fca5a5;
+      font-size:13px;font-weight:500;margin-bottom:14px;
+    }
+
+    /* ── SUCCESS ──────────────────────────────────────── */
+    #success-screen{
+      display:none;text-align:center;
+      padding:70px 32px;max-width:560px;margin:60px auto;
+      background:var(--surface);border:1px solid var(--border);border-radius:20px;
+      position:relative;z-index:1;
+    }
+    .success-ring{
+      width:80px;height:80px;border-radius:50%;
+      border:2px solid rgba(0,229,160,.4);background:rgba(0,229,160,.08);
+      display:flex;align-items:center;justify-content:center;
+      margin:0 auto 24px;box-shadow:0 0 30px rgba(0,229,160,.2);
+    }
+    .success-ring svg{width:38px;height:38px;color:var(--success)}
+    .success-title{
+      font-family:'Barlow Condensed',sans-serif;
+      font-size:36px;font-weight:800;letter-spacing:-.5px;
+      color:var(--text);margin-bottom:12px;
+    }
+    .success-sub{font-size:14px;color:var(--muted);line-height:1.75;margin-bottom:24px}
+    .success-sub strong{color:var(--cyan)}
+    .success-box{
+      background:rgba(0,229,160,.06);border:1px solid rgba(0,229,160,.2);
+      border-radius:10px;padding:16px 22px;
+      font-size:13px;color:var(--success);font-weight:500;line-height:1.65;
+    }
+
+    /* ── LOADING ──────────────────────────────────────── */
+    #loading-screen{
+      position:fixed;inset:0;background:var(--black);z-index:500;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;
+    }
+    .loading-name{
+      font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:800;
+      color:var(--cyan);letter-spacing:2px;text-shadow:0 0 24px rgba(0,229,255,.5);
+    }
+    .loading-ring{
+      width:36px;height:36px;border:3px solid rgba(0,229,255,.12);
+      border-top-color:var(--cyan);border-radius:50%;animation:spin .8s linear infinite;
+    }
+
+    /* ── FOOTER ───────────────────────────────────────── */
+    footer{
+      text-align:center;padding:32px;font-size:12px;
+      color:rgba(122,138,160,.5);letter-spacing:.03em;
+      position:relative;z-index:1;
+    }
+    footer strong{color:var(--cyan)}
+
+    /* ── RESPONSIVE ───────────────────────────────────── */
+    @media(max-width:900px){
+      .sidebar{display:none}
+      .page-body{padding:24px 16px 60px;gap:0}
+      .hdr{padding:10px 16px}
+      .prog-bar-wrap{padding:12px 16px}
+    }
+    @media(max-width:480px){
+      .hero{padding:40px 16px 36px}
+      .hero-title{font-size:28px}
+      .acc-inner{padding:20px 16px}
+      .acc-nav{padding:12px 16px}
+      .btn-next{padding:10px 20px;font-size:12px}
+    }
+  </style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading-screen">
+  <div class="loading-name">WIZONE AI LABS</div>
+  <div class="loading-ring"></div>
+</div>
+
+<!-- ── HEADER ─────────────────────────────────────────── -->
+<header class="hdr">
+  <img id="hdr-logo" src="https://wizone.ai/assets/WIZONE%20AI%20LABS%20LOGO.png" alt="Wizone AI Labs" class="hdr-logo"
+       onerror="this.style.display='none';document.getElementById('logo-fb').style.display='flex';"/>
+  <div class="hdr-logo-fb" id="logo-fb">
+    <div class="hdr-icon">W</div>
+    <div class="hdr-texts">
+      <div class="hdr-name">Wizone AI Labs</div>
+      <div class="hdr-sub">Pvt Ltd</div>
+    </div>
+  </div>
+  <div class="hdr-badge">🔒 Secure &amp; Confidential</div>
+</header>
+
+<!-- ── HERO ───────────────────────────────────────────── -->
+<section class="hero">
+  <div class="hero-tag"><span class="hero-dot"></span>Pre-Meeting Discovery</div>
+  <h1 class="hero-title">Hi <span class="hi" id="lead-name-hero">there</span>! 👋<br/>Help us help you better.</h1>
+  <p class="hero-sub">
+    <em>"Takes less than 2 minutes."</em><br/>
+    Helps us come prepared with relevant solutions for your business.
+  </p>
+  <div class="hero-pills">
+    <div class="hero-pill"><span class="d"></span>Under 2 minutes</div>
+    <div class="hero-pill"><span class="d"></span>100% Confidential</div>
+    <div class="hero-pill"><span class="d"></span>10 Questions</div>
+  </div>
+</section>
+
+<!-- ── PROGRESS ───────────────────────────────────────── -->
+<div class="prog-bar-wrap">
+  <div class="prog-meta">
+    <span class="prog-lbl" id="prog-text">YOUR ANSWERS · 0 OF 10</span>
+    <span class="prog-pct" id="prog-pct">0%</span>
+  </div>
+  <div class="prog-bg"><div class="prog-fill" id="prog-fill"></div></div>
+</div>
+
+<!-- ── BODY ───────────────────────────────────────────── -->
+<div class="page-body">
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sb-title">Sections</div>
+    <div class="sb-item active" data-sec="1" onclick="jumpTo(1)">
+      <div class="sb-num">1</div>
+      <span class="sb-label">Basic Context</span>
+      <span class="sb-check">✓</span>
+    </div>
+    <div class="sb-item" data-sec="2" onclick="jumpTo(2)">
+      <div class="sb-num">2</div>
+      <span class="sb-label">Current Workflow</span>
+      <span class="sb-check">✓</span>
+    </div>
+    <div class="sb-item" data-sec="3" onclick="jumpTo(3)">
+      <div class="sb-num">3</div>
+      <span class="sb-label">Impact</span>
+      <span class="sb-check">✓</span>
+    </div>
+    <div class="sb-item" data-sec="4" onclick="jumpTo(4)">
+      <div class="sb-num">4</div>
+      <span class="sb-label">Urgency</span>
+      <span class="sb-check">✓</span>
+    </div>
+    <div class="sb-item" data-sec="5" onclick="jumpTo(5)">
+      <div class="sb-num">5</div>
+      <span class="sb-label">Outcome</span>
+      <span class="sb-check">✓</span>
+    </div>
+    <div class="sb-item" data-sec="6" onclick="jumpTo(6)">
+      <div class="sb-num">6</div>
+      <span class="sb-label">Future Vision</span>
+      <span class="sb-check">✓</span>
+    </div>
+    <div class="sb-item" data-sec="7" onclick="jumpTo(7)">
+      <div class="sb-num" style="background:rgba(245,158,11,.2);color:#f59e0b;border-color:rgba(245,158,11,.3)">✨</div>
+      <span class="sb-label">Gold Insight</span>
+      <span class="sb-check" style="color:#f59e0b">✓</span>
+    </div>
+  </aside>
+
+  <!-- Accordion form -->
+  <div class="form-area" id="form-container">
+  <form id="q-form" novalidate>
+
+    <!-- ── SECTION 1 ── -->
+    <div class="acc-section open" id="sec-1" data-sec="1">
+      <div class="acc-head" onclick="toggleSection(1)">
+        <div class="acc-icon">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+        </div>
+        <div class="acc-meta">
+          <div class="acc-section-lbl">Section 1</div>
+          <div class="acc-title">Basic Context <span class="acc-done-badge">✓ Done</span></div>
+        </div>
+        <svg class="acc-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </div>
+      <div class="acc-body">
+        <div class="acc-inner">
+          <!-- Q1 -->
+          <div class="question">
+            <div class="q-label">
+              <div class="q-num">1</div>
+              <div class="q-text">What does your business do?
+                <span class="q-hint">1 line is enough</span>
+              </div>
+            </div>
+            <input type="text" class="q-input" id="q1" name="q1"
+                   placeholder="e.g. We run a textile wholesale business across 3 states..."/>
+            <div class="field-error" id="err-q1">Please describe what your business does</div>
+          </div>
+          <div class="q-divider"></div>
+          <!-- Q2 -->
+          <div class="question">
+            <div class="q-label">
+              <div class="q-num">2</div>
+              <div class="q-text">How big is your team?</div>
+            </div>
+            <div class="q-chips">
+              <label class="q-chip-label"><input type="radio" name="q2" value="1–10"/><span class="q-chip-btn">👤 1–10</span></label>
+              <label class="q-chip-label"><input type="radio" name="q2" value="10–50"/><span class="q-chip-btn">👥 10–50</span></label>
+              <label class="q-chip-label"><input type="radio" name="q2" value="50–200"/><span class="q-chip-btn">🏢 50–200</span></label>
+              <label class="q-chip-label"><input type="radio" name="q2" value="200+"/><span class="q-chip-btn">🏙️ 200+</span></label>
+            </div>
+            <div class="field-error" id="err-q2">Please select your team size</div>
+          </div>
+        </div>
+        <div class="acc-nav">
+          <span></span>
+          <button type="button" class="btn-next" onclick="nextSection(1)">Next →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SECTION 2 ── -->
+    <div class="acc-section" id="sec-2" data-sec="2">
+      <div class="acc-head" onclick="toggleSection(2)">
+        <div class="acc-icon">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        </div>
+        <div class="acc-meta">
+          <div class="acc-section-lbl">Section 2</div>
+          <div class="acc-title">Current Workflow <span class="acc-done-badge">✓ Done</span></div>
+        </div>
+        <svg class="acc-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </div>
+      <div class="acc-body">
+        <div class="acc-inner">
+          <!-- Q3 -->
+          <div class="question">
+            <div class="q-label">
+              <div class="q-num">3</div>
+              <div class="q-text">How do you currently manage your work / data?</div>
+            </div>
+            <div class="q-chips">
+              <label class="q-chip-label"><input type="radio" name="q3" value="Excel / Sheets"/><span class="q-chip-btn">📊 Excel / Sheets</span></label>
+              <label class="q-chip-label"><input type="radio" name="q3" value="WhatsApp / Calls"/><span class="q-chip-btn">💬 WhatsApp / Calls</span></label>
+              <label class="q-chip-label"><input type="radio" name="q3" value="Software / ERP"/><span class="q-chip-btn">💻 Software / ERP</span></label>
+              <label class="q-chip-label"><input type="radio" name="q3" value="Mix of everything"/><span class="q-chip-btn">🔀 Mix of everything</span></label>
+            </div>
+            <div class="field-error" id="err-q3">Please select how you manage work</div>
+          </div>
+          <div class="q-divider"></div>
+          <!-- Q4 -->
+          <div class="question">
+            <div class="q-label">
+              <div class="q-num">4</div>
+              <div class="q-text">What's the biggest headache in your operations right now?
+                <span class="q-hint">1 line — what slows you down the most</span>
+              </div>
+            </div>
+            <input type="text" class="q-input" id="q4" name="q4"
+                   placeholder="e.g. Tracking orders across teams takes too much time..."/>
+            <div class="field-error" id="err-q4">Please tell us your biggest challenge</div>
+          </div>
+        </div>
+        <div class="acc-nav">
+          <button type="button" class="btn-skip" onclick="backTo(1)">← Back</button>
+          <button type="button" class="btn-next" onclick="nextSection(2)">Next →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SECTION 3 ── -->
+    <div class="acc-section" id="sec-3" data-sec="3">
+      <div class="acc-head" onclick="toggleSection(3)">
+        <div class="acc-icon">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+        </div>
+        <div class="acc-meta">
+          <div class="acc-section-lbl">Section 3</div>
+          <div class="acc-title">Impact <span class="acc-done-badge">✓ Done</span></div>
+        </div>
+        <svg class="acc-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </div>
+      <div class="acc-body">
+        <div class="acc-inner">
+          <!-- Q5 -->
+          <div class="question">
+            <div class="q-label">
+              <div class="q-num">5</div>
+              <div class="q-text">Where are you losing the most?</div>
+            </div>
+            <div class="q-chips">
+              <label class="q-chip-label"><input type="radio" name="q5" value="Time"/><span class="q-chip-btn">⏳ Time</span></label>
+              <label class="q-chip-label"><input type="radio" name="q5" value="Money"/><span class="q-chip-btn">💰 Money</span></label>
+              <label class="q-chip-label"><input type="radio" name="q5" value="Missed opportunities"/><span class="q-chip-btn">🎯 Missed opportunities</span></label>
+              <label class="q-chip-label"><input type="radio" name="q5" value="Errors / rework"/><span class="q-chip-btn">🔁 Errors / rework</span></label>
+            </div>
+            <div class="field-error" id="err-q5">Please select where you're losing the most</div>
+          </div>
+          <div class="q-divider"></div>
+          <!-- Q6 -->
+          <div class="question">
+            <div class="q-label">
+              <div class="q-num">6</div>
+              <div class="q-text">Roughly how often does this problem happen?</div>
+            </div>
+            <div class="q-chips">
+              <label class="q-chip-label"><input type="radio" name="q6" value="Daily"/><span class="q-chip-btn">🔴 Daily</span></label>
+              <label class="q-chip-label"><input type="radio" name="q6" value="Weekly"/><span class="q-chip-btn">🟡 Weekly</span></label>
+              <label class="q-chip-label"><input type="radio" name="q6" value="Occasionally"/><span class="q-chip-btn">🟢 Occasionally</span></label>
+            </div>
+            <div class="field-error" id="err-q6">Please select frequency</div>
+          </div>
+        </div>
+        <div class="acc-nav">
+          <button type="button" class="btn-skip" onclick="backTo(2)">← Back</button>
+          <button type="button" class="btn-next" onclick="nextSection(3)">Next →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SECTION 4 ── -->
+    <div class="acc-section" id="sec-4" data-sec="4">
+      <div class="acc-head" onclick="toggleSection(4)">
+        <div class="acc-icon">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <div class="acc-meta">
+          <div class="acc-section-lbl">Section 4</div>
+          <div class="acc-title">Urgency <span class="acc-done-badge">✓ Done</span></div>
+        </div>
+        <svg class="acc-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </div>
+      <div class="acc-body">
+        <div class="acc-inner">
+          <!-- Q7 -->
+          <div class="question">
+            <div class="q-label">
+              <div class="q-num">7</div>
+              <div class="q-text">Why are you looking to fix this now?
+                <span class="q-hint">What triggered this?</span>
+              </div>
+            </div>
+            <input type="text" class="q-input" id="q7" name="q7"
+                   placeholder="e.g. We lost a big client due to a coordination mistake last month..."/>
+            <div class="field-error" id="err-q7">Please share what triggered this</div>
+          </div>
+        </div>
+        <div class="acc-nav">
+          <button type="button" class="btn-skip" onclick="backTo(3)">← Back</button>
+          <button type="button" class="btn-next" onclick="nextSection(4)">Next →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SECTION 5 ── -->
+    <div class="acc-section" id="sec-5" data-sec="5">
+      <div class="acc-head" onclick="toggleSection(5)">
+        <div class="acc-icon">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <div class="acc-meta">
+          <div class="acc-section-lbl">Section 5</div>
+          <div class="acc-title">Outcome <span class="acc-done-badge">✓ Done</span></div>
+        </div>
+        <svg class="acc-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </div>
+      <div class="acc-body">
+        <div class="acc-inner">
+          <!-- Q8 -->
+          <div class="question">
+            <div class="q-label">
+              <div class="q-num">8</div>
+              <div class="q-text">If this gets solved, what changes for you immediately?
+                <span class="q-hint">1 line — biggest impact</span>
+              </div>
+            </div>
+            <input type="text" class="q-input" id="q8" name="q8"
+                   placeholder="e.g. My team can close 2x more orders without extra staff..."/>
+            <div class="field-error" id="err-q8">Please share the biggest impact you expect</div>
+          </div>
+        </div>
+        <div class="acc-nav">
+          <button type="button" class="btn-skip" onclick="backTo(4)">← Back</button>
+          <button type="button" class="btn-next" onclick="nextSection(5)">Next →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SECTION 6 ── -->
+    <div class="acc-section" id="sec-6" data-sec="6">
+      <div class="acc-head" onclick="toggleSection(6)">
+        <div class="acc-icon">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064"/></svg>
+        </div>
+        <div class="acc-meta">
+          <div class="acc-section-lbl">Section 6</div>
+          <div class="acc-title">Future Vision <span class="acc-done-badge">✓ Done</span></div>
+        </div>
+        <svg class="acc-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </div>
+      <div class="acc-body">
+        <div class="acc-inner">
+          <!-- Q9 -->
+          <div class="question">
+            <div class="q-label">
+              <div class="q-num">9</div>
+              <div class="q-text">Where do you want your business in the next 6–12 months?</div>
+            </div>
+            <div class="q-chips">
+              <label class="q-chip-label"><input type="radio" name="q9" value="Scale operations"/><span class="q-chip-btn">📈 Scale operations</span></label>
+              <label class="q-chip-label"><input type="radio" name="q9" value="Increase revenue"/><span class="q-chip-btn">💹 Increase revenue</span></label>
+              <label class="q-chip-label"><input type="radio" name="q9" value="Reduce manual work"/><span class="q-chip-btn">🤖 Reduce manual work</span></label>
+              <label class="q-chip-label"><input type="radio" name="q9" value="Better control & visibility"/><span class="q-chip-btn">🎛️ Better control &amp; visibility</span></label>
+            </div>
+            <div class="field-error" id="err-q9">Please select your goal</div>
+          </div>
+        </div>
+        <div class="acc-nav">
+          <button type="button" class="btn-skip" onclick="backTo(5)">← Back</button>
+          <button type="button" class="btn-next" onclick="nextSection(6)">Next →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── SECTION 7 (Optional) ── -->
+    <div class="acc-section" id="sec-7" data-sec="7" style="border-color:rgba(245,158,11,.2)">
+      <div class="acc-head" onclick="toggleSection(7)">
+        <div class="acc-icon" style="background:linear-gradient(135deg,#f59e0b,#d97706);box-shadow:0 0 12px rgba(245,158,11,.3)">
+          <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+        </div>
+        <div class="acc-meta">
+          <div class="acc-section-lbl" style="color:#f59e0b">Optional</div>
+          <div class="acc-title">Gold Insight ✨ <span class="acc-done-badge" style="color:#f59e0b;border-color:rgba(245,158,11,.3);background:rgba(245,158,11,.1)">✓ Done</span></div>
+        </div>
+        <svg class="acc-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+      </div>
+      <div class="acc-body">
+        <div class="acc-inner">
+          <!-- Q10 -->
+          <div class="question">
+            <div class="q-label">
+              <div class="q-num gold">10</div>
+              <div class="q-text">Anything specific you want us to focus on in the call?
+                <span class="q-optional">OPTIONAL</span>
+                <span class="q-hint">Any concerns, integrations, or use cases you have in mind?</span>
+              </div>
+            </div>
+            <textarea class="q-input" id="q10" name="q10" rows="3"
+                      placeholder="e.g. We use Tally — want to know if it integrates. Also worried about team training time..."></textarea>
+          </div>
+        </div>
+        <div class="acc-nav">
+          <button type="button" class="btn-skip" onclick="backTo(6)">← Back</button>
+          <span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Error -->
+    <div class="error-banner" id="error-banner">
+      ⚠️ <span id="error-msg">Please fill in all required fields.</span>
+    </div>
+
+    <!-- Submit -->
+    <div class="submit-wrap">
+      <p class="submit-note">🔒 Your answers are shared only with Wizone AI Labs team · 100% Confidential</p>
+      <button type="submit" class="btn-submit" id="submit-btn">
+        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width:17px;height:17px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>
+        Submit My Answers
+      </button>
+    </div>
+
+  </form>
+  </div><!-- end form-area -->
+
+  <!-- Success (inside page-body so it inherits layout) -->
+  <div id="success-screen">
+    <div class="success-ring">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+    </div>
+    <div class="success-title">Thank you! 🎉</div>
+    <p class="success-sub">The team at <strong>Wizone AI Labs</strong> will review your answers before the call and come fully prepared with tailored solutions.</p>
+    <div class="success-box">✅ You're all set! Check your email for the meeting link.</div>
+  </div>
+
+</div><!-- end page-body -->
+
+<footer><strong>Wizone AI Labs Pvt Ltd</strong> · Intelligent Business Solutions · All answers are confidential</footer>
+
+<script>
+  const API_BASE = '/api';
+  const p = new URLSearchParams(window.location.search);
+  const TOKEN   = p.get('t') || p.get('token') || '';
+  const LEAD_ID = p.get('lid') || '';
+  const TOTAL   = 10;
+  const REQUIRED= ['q1','q2','q3','q4','q5','q6','q7','q8','q9'];
+  let openSec   = 1;
+
+  /* ── Accordion ── */
+  // Toggle individual section open/closed (header click or Back button)
+  function toggleSection(n) {
+    const el = document.getElementById('sec-'+n);
+    if (el.classList.contains('open')) {
+      el.classList.remove('open');
+      if (openSec === n) openSec = 0;
+    } else {
+      el.classList.add('open');
+      openSec = n;
+      setTimeout(() => el.scrollIntoView({ behavior:'smooth', block:'start' }), 60);
+      updateSidebar(n);
+    }
+  }
+
+  // Open a section WITHOUT closing others (used by Next & sidebar jump)
+  function openSection(n) {
+    const el = document.getElementById('sec-'+n);
+    if (el) {
+      el.classList.add('open');
+      openSec = n;
+      setTimeout(() => el.scrollIntoView({ behavior:'smooth', block:'start' }), 60);
+    }
+    updateSidebar(n);
+  }
+
+  function jumpTo(n) { openSection(n); }
+
+  // Back button: just scroll up to previous section (both stay open)
+  function backTo(n) {
+    const el = document.getElementById('sec-'+n);
+    if (el) setTimeout(() => el.scrollIntoView({ behavior:'smooth', block:'start' }), 60);
+    updateSidebar(n);
+  }
+
+  function nextSection(n) {
+    if (!validateSection(n)) return;
+    markDone(n);
+    if (n < 7) {
+      openSection(n + 1); // open next — previous stays open
+    } else {
+      // All done — scroll to submit
+      document.querySelector('.submit-wrap').scrollIntoView({ behavior:'smooth', block:'center' });
+    }
+  }
+
+  function markDone(n) {
+    const el = document.getElementById('sec-'+n);
+    if (el) el.classList.add('completed');
+    const sb = document.querySelector(`.sb-item[data-sec="${n}"]`);
+    if (sb) sb.classList.add('done');
+    updateProgress();
+  }
+
+  function updateSidebar(active) {
+    document.querySelectorAll('.sb-item').forEach(s => {
+      s.classList.toggle('active', parseInt(s.dataset.sec) === active);
+    });
+  }
+
+  /* ── Progress ── */
+  function countAnswered() {
+    let n = 0;
+    for (let i = 1; i <= TOTAL; i++) {
+      const r = document.querySelector(`[name="q${i}"]:checked`);
+      const t = document.getElementById(`q${i}`);
+      if (r || (t && t.value.trim())) n++;
+    }
+    return n;
+  }
+
+  function updateProgress() {
+    const done = countAnswered();
+    const pct  = Math.round(done / TOTAL * 100);
+    document.getElementById('prog-fill').style.width = pct + '%';
+    document.getElementById('prog-pct').textContent  = pct + '%';
+    document.getElementById('prog-text').textContent = `YOUR ANSWERS · ${done} OF ${TOTAL}`;
+  }
+
+  document.getElementById('q-form').addEventListener('input',  updateProgress);
+  document.getElementById('q-form').addEventListener('change', updateProgress);
+
+  /* ── Validate one section ── */
+  const SEC_FIELDS = {
+    1: ['q1','q2'], 2: ['q3','q4'], 3: ['q5','q6'],
+    4: ['q7'],      5: ['q8'],      6: ['q9'],      7: []
+  };
+  const RADIO_FIELDS = new Set(['q2','q3','q5','q6','q9']);
+
+  function validateSection(n) {
+    let ok = true;
+    (SEC_FIELDS[n] || []).forEach(key => {
+      const errEl = document.getElementById('err-'+key);
+      if (RADIO_FIELDS.has(key)) {
+        if (!document.querySelector(`[name="${key}"]:checked`)) {
+          if (errEl) errEl.style.display = 'block';
+          ok = false;
+        } else { if (errEl) errEl.style.display = 'none'; }
+      } else {
+        const el = document.getElementById(key);
+        if (!el?.value.trim()) {
+          el?.classList.add('error');
+          if (errEl) errEl.style.display = 'block';
+          ok = false;
+        } else {
+          el?.classList.remove('error');
+          if (errEl) errEl.style.display = 'none';
+        }
+      }
+    });
+    return ok;
+  }
+
+  /* ── Full validate ── */
+  function validateAll() {
+    let ok = true;
+    REQUIRED.forEach(key => {
+      const errEl = document.getElementById('err-'+key);
+      if (RADIO_FIELDS.has(key)) {
+        if (!document.querySelector(`[name="${key}"]:checked`)) {
+          if (errEl) errEl.style.display = 'block';
+          ok = false;
+        }
+      } else {
+        const el = document.getElementById(key);
+        if (!el?.value.trim()) {
+          el?.classList.add('error');
+          if (errEl) errEl.style.display = 'block';
+          ok = false;
+        }
+      }
+    });
+    return ok;
+  }
+
+  /* ── Collect answers ── */
+  function collect() {
+    const g  = id => document.getElementById(id)?.value.trim() || '';
+    const gr = name => document.querySelector(`[name="${name}"]:checked`)?.value || '';
+    return { q1:g('q1'), q2:gr('q2'), q3:gr('q3'), q4:g('q4'),
+             q5:gr('q5'), q6:gr('q6'), q7:g('q7'), q8:g('q8'),
+             q9:gr('q9'), q10:g('q10') };
+  }
+
+  /* ── Submit ── */
+  document.getElementById('q-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const banner = document.getElementById('error-banner');
+    banner.style.display = 'none';
+    if (!validateAll()) {
+      banner.style.display = 'block';
+      document.getElementById('error-msg').textContent = 'Please complete all required fields.';
+      // Open first incomplete section
+      for (let s = 1; s <= 6; s++) {
+        if (!validateSection(s)) { openSection(s); break; }
+      }
+      return;
+    }
+
+    const btn = document.getElementById('submit-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="btn-spinner"></div> SUBMITTING...';
+
+    const payload = { answers: collect() };
+    if (TOKEN)   payload.token   = TOKEN;
+    if (LEAD_ID) payload.lead_id = LEAD_ID;
+
+    try {
+      const r = await fetch(`${API_BASE}/public/questionnaire/submit`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) { const e = await r.json().catch(()=>({})); throw new Error(e.error||'Failed'); }
+
+      document.getElementById('form-container').style.display = 'none';
+      document.querySelector('.prog-bar-wrap').style.display  = 'none';
+      document.querySelector('.hero').style.display           = 'none';
+      document.querySelector('aside.sidebar').style.display   = 'none';
+      document.getElementById('success-screen').style.display = 'block';
+      document.getElementById('success-screen').style.margin  = '60px auto';
+      window.scrollTo({ top:0, behavior:'smooth' });
+
+    } catch(err) {
+      btn.disabled = false;
+      btn.innerHTML = '<svg fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width:17px;height:17px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg> Submit My Answers';
+      banner.style.display = 'block';
+      document.getElementById('error-msg').textContent = err.message;
+    }
+  });
+
+  /* ── Fetch lead name ── */
+  async function fetchLeadInfo() {
+    if (!TOKEN && !LEAD_ID) return;
+    try {
+      const url = TOKEN
+        ? `${API_BASE}/public/questionnaire/info?token=${encodeURIComponent(TOKEN)}`
+        : `${API_BASE}/public/questionnaire/info?lid=${encodeURIComponent(LEAD_ID)}`;
+      const r = await fetch(url);
+      if (!r.ok) return;
+      const d = await r.json();
+      if (d.full_name) document.getElementById('lead-name-hero').textContent = d.full_name.split(' ')[0];
+    } catch {}
+  }
+
+  /* ── Init ── */
+  window.addEventListener('load', async () => {
+    await fetchLeadInfo();
+    document.getElementById('loading-screen').style.display = 'none';
+    updateProgress();
+    updateSidebar(1);
+  });
+</script>
+</body>
+</html>

@@ -27,6 +27,7 @@ const captureRoutes  = require('./routes/capture');
 const settingsRoutes = require('./routes/settings');
 const meetingRoutes  = require('./routes/meetings');
 const internalRoutes = require('./routes/internal');
+const publicRoutes   = require('./routes/public');
 
 // Ensure log directory exists
 const logDir = path.join(__dirname, 'logs');
@@ -90,6 +91,7 @@ app.use('/api/capture',   captureRoutes);
 app.use('/api/settings',  settingsRoutes);
 app.use('/api/meetings',  meetingRoutes);
 app.use('/api/internal', internalRoutes);  // landing-page → LMS automation bridge
+app.use('/api/public',   publicRoutes);    // public questionnaire (no auth, token-protected)
 
 // Health check
 app.get('/api/health', (req, res) => {

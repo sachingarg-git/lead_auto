@@ -161,4 +161,27 @@ router.post('/:id/set-slot', authenticate, authorize('leads:write'), async (req,
   }
 });
 
+/* ── Manual: send questionnaire email to a specific lead ── */
+router.post('/:id/send-questionnaire', authenticate, authorize('leads:write'), async (req, res) => {
+  const logger = require('../config/logger');
+  try {
+    const Lead = require('../models/Lead');
+    const { sendQuestionnaireEmail } = require('../services/emailService');
+    const { generateToken } = require('./public');
+
+    const lead = await Lead.findById(parseInt(req.params.id));
+    if (!lead)        return res.status(404).json({ error: 'Lead not found' });
+    if (!lead.email)  return res.status(400).json({ error: 'Lead has no email address' });
+
+    const token = generateToken(lead.id);
+    await sendQuestionnaireEmail(lead, token);
+
+    logger.info(`[ManualQuestionnaire] Sent to lead ${lead.id} (${lead.email}) by user ${req.user?.id}`);
+    res.json({ success: true, sent_to: lead.email });
+  } catch (err) {
+    logger.error('[ManualQuestionnaire] error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;
